@@ -1,0 +1,72 @@
+[
+  {
+    "id": "recipe-dmenu-modern-runtime",
+    "name": "dMenu (CommonLibSSE Log Directory & Runtime 1.7+ Fix)",
+    "description": "Corrige o desreferenciamento nulo no log_directory e adapta para Address Library 1.7+ (AE)",
+    "gameVersionTarget": "1.6.1130+ e 1.7.104.0",
+    "targetSha256": "c083c1ab50f6bd7775c35152df1e538317c6f4107d2bfa31181b08c5f17e01b8",
+    "patches": []
+  },
+  {
+    "id": "recipe-generic-ui-struct-shift",
+    "name": "Skyrim AE 1.6.1130+ UI Struct Shift Fix",
+    "description": "Corrige o deslocamento de ponteiro interno da estrutura de interface (UI) alterado no Skyrim 1.6.1130+",
+    "gameVersionTarget": "1.6.1130+",
+    "targetSha256": "",
+    "patternHex": "48 8B 41 20 48 85 C0",
+    "patches": [
+      {
+        "offsetHex": "0x0",
+        "originalBytes": "48 8B 41 20",
+        "replacementBytes": "48 8B 41 28",
+        "comment": "Ajuste do deslocamento de membro de interface (+0x20 -> +0x28)"
+      }
+    ]
+  },
+  {
+    "id": "recipe-quickloot-re-ae",
+    "name": "QuickLoot RE (Legacy AE Fix)",
+    "description": "Compatibilização de ponteiros de menu do QuickLoot RE para Skyrim 1.6.1130/1170",
+    "gameVersionTarget": "1.6.1130 - 1.6.1170",
+    "targetSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "patches": [
+      {
+        "offsetHex": "0x2C10",
+        "originalBytes": "48 8B 81 20 01 00 00",
+        "replacementBytes": "48 8B 81 28 01 00 00",
+        "comment": "Ajuste de offset de IMenu Singleton"
+      }
+    ]
+  },
+  {
+    "id": "recipe-smoothcam-legacy",
+    "name": "SmoothCam (Legacy AE Pointer Fix)",
+    "description": "Atualiza referências de ponteiros da câmera em builds legadas do SmoothCam",
+    "gameVersionTarget": "1.6.1130+",
+    "targetSha256": "da39a3ee5e6b4b0d3255bfef95601890afd80709",
+    "patches": [
+      {
+        "offsetHex": "0x1540",
+        "originalBytes": "48 89 5C 24 08",
+        "replacementBytes": "48 89 5C 24 08",
+        "comment": "Preserva prolog e alinha registros x64"
+      }
+    ]
+  },
+  {
+    "id": "recipe-maxsu-detection-meter",
+    "name": "Maxsu Detection Meter (HUD Layout Patch)",
+    "description": "Compatibiliza callbacks do Scaleform HUD para Skyrim AE moderno",
+    "gameVersionTarget": "1.6.1130+",
+    "targetSha256": "01ba4719c80b6fe911b091a7c05124b64eeece964e09c058ef8f9805daca546b",
+    "patches": [
+      {
+        "offsetHex": "0x4A20",
+        "originalBytes": "48 8B 05 00 00 00 00",
+        "replacementBytes": "48 8B 05 00 00 00 00",
+        "comment": "Verificação de assinatura de HUDMenu"
+      }
+    ]
+  }
+]
+

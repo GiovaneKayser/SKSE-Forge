@@ -1,0 +1,273 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  * {
+    border-color: #2e3346;
+  }
+
+  body {
+    background-color: #090a0f;
+    background-image: 
+      radial-gradient(ellipse at 50% 0%, rgba(224, 99, 27, 0.04) 0%, transparent 60%),
+      radial-gradient(ellipse at 50% 100%, rgba(197, 160, 89, 0.04) 0%, transparent 50%),
+      linear-gradient(to bottom, #090a0f 0%, #0e1117 40%, #090a0f 100%);
+    min-height: 100vh;
+    color: #d1d5db;
+    font-family: 'Inter', system-ui, -apple-system, sans-serif;
+  }
+}
+
+/* Authentic Skyrim / SkyUI & Blacksmith Forge Aesthetic */
+@layer components {
+  /* Forged Steel Plate (Container) */
+  .skyrim-plate {
+    background: #141721;
+    border: 1px solid #2e3346;
+    box-shadow: 
+      inset 0 1px 0 rgba(255, 255, 255, 0.04),
+      inset 0 0 16px rgba(0, 0, 0, 0.7),
+      0 4px 16px rgba(0, 0, 0, 0.6);
+    border-radius: 0px;
+    position: relative;
+  }
+
+  /* Carved Dark Stone Block (Internal Metric / Group) */
+  .skyrim-stone {
+    background: #0c0e14;
+    border: 1px solid #232736;
+    box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.8);
+    border-radius: 0px;
+  }
+
+  /* The Forge Plate (Embers & Glowing Iron) */
+  .skyrim-plate-forge {
+    border-color: rgba(224, 99, 27, 0.6);
+    background: linear-gradient(180deg, rgba(224, 99, 27, 0.07) 0%, #141721 100%);
+    box-shadow: 
+      0 0 20px rgba(224, 99, 27, 0.15),
+      inset 0 1px 0 rgba(224, 99, 27, 0.3),
+      inset 0 0 16px rgba(0, 0, 0, 0.7);
+  }
+
+  /* The Transmutation Plate (Frost & Arcane Mist) */
+  .skyrim-plate-transmute {
+    border-color: rgba(84, 139, 156, 0.6);
+    background: linear-gradient(180deg, rgba(84, 139, 156, 0.07) 0%, #141721 100%);
+    box-shadow: 
+      0 0 20px rgba(115, 165, 198, 0.15),
+      inset 0 1px 0 rgba(115, 165, 198, 0.3),
+      inset 0 0 16px rgba(0, 0, 0, 0.7);
+  }
+
+  /* Ancient Gold Accent Plate */
+  .skyrim-plate-gold {
+    border-color: rgba(197, 160, 89, 0.55);
+    background: linear-gradient(180deg, rgba(197, 160, 89, 0.06) 0%, #141721 100%);
+    box-shadow: 
+      0 0 20px rgba(197, 160, 89, 0.15),
+      inset 0 1px 0 rgba(197, 160, 89, 0.3),
+      inset 0 0 16px rgba(0, 0, 0, 0.7);
+  }
+
+  /* Heavy Blacksmith Action Button */
+  .skyrim-btn {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-family: 'Cinzel', serif;
+    font-weight: 700;
+    letter-spacing: 0.15em;
+    text-transform: uppercase;
+    transition: all 0.15s ease-out;
+    background: linear-gradient(180deg, #1d222e 0%, #12151e 100%);
+    border: 1px solid #3d4457;
+    color: #d1d5db;
+    border-radius: 0px;
+    box-shadow: 
+      0 2px 6px rgba(0, 0, 0, 0.6),
+      inset 0 1px 0 rgba(255, 255, 255, 0.06);
+    cursor: pointer;
+  }
+
+  .skyrim-btn:hover:not(:disabled) {
+    border-color: #c5a059;
+    color: #f3f4f6;
+    background: linear-gradient(180deg, #262c3b 0%, #161a25 100%);
+    box-shadow: 
+      0 0 12px rgba(197, 160, 89, 0.25),
+      inset 0 1px 0 rgba(197, 160, 89, 0.3);
+  }
+
+  .skyrim-btn:active:not(:disabled) {
+    transform: translateY(1px);
+    box-shadow: inset 0 2px 6px rgba(0, 0, 0, 0.8);
+  }
+
+  .skyrim-btn:disabled {
+    opacity: 0.38;
+    cursor: not-allowed;
+    border-color: #232736;
+    background: #10131a;
+  }
+
+  /* Forge Primary Button (Incandescent Ember & Gold) */
+  .skyrim-btn-primary {
+    background: linear-gradient(180deg, #2c2014 0%, #18120c 100%);
+    border: 1px solid #c5a059;
+    color: #e5c687;
+    box-shadow: 
+      0 0 15px rgba(224, 99, 27, 0.2),
+      inset 0 1px 0 rgba(229, 198, 135, 0.3),
+      0 2px 8px rgba(0, 0, 0, 0.7);
+  }
+
+  .skyrim-btn-primary:hover:not(:disabled) {
+    border-color: #e0631b;
+    color: #ffffff;
+    background: linear-gradient(180deg, #3d2716 0%, #201308 100%);
+    box-shadow: 
+      0 0 20px rgba(224, 99, 27, 0.4),
+      inset 0 1px 0 rgba(245, 158, 11, 0.5);
+    text-shadow: 0 0 8px rgba(224, 99, 27, 0.8);
+  }
+
+  /* Transmute Secondary Button (Soul Gem / Arcane Frost) */
+  .skyrim-btn-frost {
+    background: linear-gradient(180deg, #13222a 0%, #0c161c 100%);
+    border: 1px solid #548b9c;
+    color: #73a5c6;
+    box-shadow: 
+      0 0 12px rgba(84, 139, 156, 0.2),
+      inset 0 1px 0 rgba(115, 165, 198, 0.2);
+  }
+
+  .skyrim-btn-frost:hover:not(:disabled) {
+    border-color: #73a5c6;
+    color: #e2f1f8;
+    background: linear-gradient(180deg, #1a2f3b 0%, #101f28 100%);
+    box-shadow: 
+      0 0 18px rgba(115, 165, 198, 0.35),
+      inset 0 1px 0 rgba(115, 165, 198, 0.4);
+    text-shadow: 0 0 8px rgba(115, 165, 198, 0.7);
+  }
+
+  /* Authentic SkyUI Diamond Divider */
+  .skyrim-divider {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 100%;
+    margin: 1rem 0;
+    opacity: 0.65;
+  }
+
+  .skyrim-divider::before,
+  .skyrim-divider::after {
+    content: '';
+    flex: 1;
+    height: 1px;
+    background: linear-gradient(90deg, transparent, #8c7447 50%, transparent);
+  }
+
+  .skyrim-divider-diamond {
+    padding: 0 0.75rem;
+    font-size: 0.75rem;
+    color: #c5a059;
+    text-shadow: 0 0 6px rgba(197, 160, 89, 0.6);
+  }
+
+  /* Straight Rune Badge / Tag (Skyrim Style) */
+  .skyrim-rune-tag {
+    display: inline-flex;
+    align-items: center;
+    padding: 0.125rem 0.5rem;
+    border: 1px solid #2e3346;
+    background: #0a0c12;
+    color: #c5a059;
+    font-family: 'Cinzel', serif;
+    font-size: 0.65rem;
+    letter-spacing: 0.15em;
+    text-transform: uppercase;
+    border-radius: 0px;
+    line-height: 1.2;
+  }
+
+  .skyrim-rune-tag-gold {
+    border-color: #8c7447;
+    color: #e5c687;
+    background: rgba(197, 160, 89, 0.08);
+  }
+
+  .skyrim-rune-tag-forge {
+    border-color: #993d0a;
+    color: #f59e0b;
+    background: rgba(224, 99, 27, 0.08);
+  }
+
+  .skyrim-rune-tag-frost {
+    border-color: #355b66;
+    color: #73a5c6;
+    background: rgba(84, 139, 156, 0.08);
+  }
+
+  .skyrim-rune-tag-moss {
+    border-color: #1a5327;
+    color: #4ade80;
+    background: rgba(46, 133, 64, 0.12);
+  }
+
+  .skyrim-rune-tag-daedric {
+    border-color: #5c1010;
+    color: #f87171;
+    background: rgba(153, 27, 27, 0.12);
+  }
+
+  /* Nordic Progress Bar */
+  .skyrim-bar-frame {
+    background: #0a0c12;
+    border: 1px solid #2e3346;
+    padding: 2px;
+    box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.9);
+    border-radius: 0px;
+  }
+
+  .skyrim-bar-gold {
+    background: linear-gradient(90deg, #593d14 0%, #c5a059 50%, #e5c687 100%);
+    box-shadow: 0 0 10px rgba(197, 160, 89, 0.5), inset 0 1px 0 rgba(255, 255, 255, 0.3);
+  }
+
+  .skyrim-bar-forge {
+    background: linear-gradient(90deg, #7c2d12 0%, #e0631b 50%, #f59e0b 100%);
+    box-shadow: 0 0 12px rgba(224, 99, 27, 0.6), inset 0 1px 0 rgba(255, 255, 255, 0.3);
+  }
+
+  .skyrim-bar-frost {
+    background: linear-gradient(90deg, #164e63 0%, #548b9c 50%, #73a5c6 100%);
+    box-shadow: 0 0 12px rgba(115, 165, 198, 0.6), inset 0 1px 0 rgba(255, 255, 255, 0.3);
+  }
+}
+
+/* Custom Nordic Scrollbar (Iron Track & Forged Thumb) */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: #090a0f;
+  border-left: 1px solid #1c1f2b;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #252b3b;
+  border: 1px solid #3d4457;
+  border-radius: 0px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #3b445c;
+  border-color: #c5a059;
+}
