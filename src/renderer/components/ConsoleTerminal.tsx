@@ -177,3 +177,4 @@ export const ConsoleTerminal: React.FC<ConsoleTerminalProps> = ({ logs, onClear 
 
 // Also export SkyrimTerminal for backwards compatibility
 export const SkyrimTerminal = ConsoleTerminal;
+

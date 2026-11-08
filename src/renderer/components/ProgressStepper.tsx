@@ -177,3 +177,4 @@ export const ProgressStepper: React.FC<ProgressStepperProps> = ({
 
 // Also export SkyrimProgressBar for backwards compatibility
 export const SkyrimProgressBar = ProgressStepper;
+

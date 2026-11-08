@@ -8,6 +8,7 @@ dist/
 dist-electron/
 build/
 out/
+release/
 .cache/
 *.tsbuildinfo
 
@@ -52,3 +53,4 @@ desktop.ini
 *.user
 *.userosv
 *.sln.docstates
+

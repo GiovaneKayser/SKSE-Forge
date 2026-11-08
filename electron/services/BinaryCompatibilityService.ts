@@ -43,10 +43,20 @@ export class BinaryCompatibilityService {
    */
   private loadRecipes(): void {
     try {
-      const recipePath = path.join(__dirname, '../data/patch_recipes.json');
-      if (fs.existsSync(recipePath)) {
-        const raw = fs.readFileSync(recipePath, 'utf8');
-        this.recipes = JSON.parse(raw);
+      const candidates = [
+        path.join(__dirname, '../electron/data/patch_recipes.json'),
+        path.join(__dirname, '../data/patch_recipes.json'),
+        path.join(__dirname, 'data/patch_recipes.json'),
+        path.join(process.resourcesPath || '', 'data/patch_recipes.json'),
+        path.join(process.resourcesPath || '', 'electron/data/patch_recipes.json'),
+      ];
+
+      for (const recipePath of candidates) {
+        if (fs.existsSync(recipePath)) {
+          const raw = fs.readFileSync(recipePath, 'utf8');
+          this.recipes = JSON.parse(raw);
+          break;
+        }
       }
     } catch (err) {
       console.warn('Failed to load patch_recipes.json:', err);

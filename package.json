@@ -7,7 +7,56 @@
     "dev": "cross-env ELECTRON_RUN_AS_NODE= vite",
     "build": "tsc && vite build",
     "test": "tsx test/test-services.ts && tsx test/test-pack.ts && tsx test/test-binary-compat.ts",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "generate-icon": "node scripts/generate-icon.mjs",
+    "dist:win": "npm run build && electron-builder --win",
+    "dist:portable": "npm run build && electron-builder --win portable",
+    "dist:zip": "npm run build && electron-builder --win zip"
+  },
+  "build": {
+    "appId": "com.giovanekayser.skseforge",
+    "productName": "SKSE Forge",
+    "copyright": "Copyright © 2026 Giovane Kayser",
+    "directories": {
+      "output": "release",
+      "buildResources": "assets"
+    },
+    "files": [
+      "dist/**/*",
+      "dist-electron/**/*",
+      "electron/data/**/*",
+      "node_modules/**/*",
+      "package.json"
+    ],
+    "extraResources": [
+      {
+        "from": "electron/data",
+        "to": "data",
+        "filter": ["**/*"]
+      }
+    ],
+    "asar": true,
+    "win": {
+      "target": [
+        {
+          "target": "portable",
+          "arch": [
+            "x64"
+          ]
+        },
+        {
+          "target": "zip",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "icon": "assets/icon.ico",
+      "artifactName": "SKSE-Forge-v${version}-win-${arch}.${ext}"
+    },
+    "portable": {
+      "artifactName": "SKSE-Forge-v${version}-Portable.exe"
+    }
   },
   "keywords": [
     "skse",
@@ -39,6 +88,8 @@
     "autoprefixer": "^10.4.20",
     "cross-env": "^7.0.3",
     "electron": "^34.2.0",
+    "electron-builder": "^26.18.0",
+    "png-to-ico": "^3.0.2",
     "postcss": "^8.5.3",
     "tailwindcss": "^3.4.17",
     "tsx": "^4.23.15",

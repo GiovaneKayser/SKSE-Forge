@@ -179,3 +179,4 @@ export const ForgePanel: React.FC<ForgePanelProps> = ({
 
 // Also export SkyrimInput for backwards compatibility
 export const SkyrimInput = ForgePanel;
+

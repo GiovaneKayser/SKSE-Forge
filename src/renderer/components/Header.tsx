@@ -123,3 +123,4 @@ export const Header: React.FC<HeaderProps> = ({
 
 // Also export SkyrimHeader for backwards compatibility
 export const SkyrimHeader = Header;
+
