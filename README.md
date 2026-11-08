@@ -9,40 +9,8 @@
 
 **SKSE Forge** é uma aplicação desktop de alta performance criada para a comunidade de modding de **The Elder Scrolls V: Skyrim (SE/AE)**. A ferramenta automatiza a migração, modernização e compilação de plugins SKSE legados para a biblioteca moderna [CommonLibSSE-NG](https://github.com/CharmedBaryon/CommonLibSSE-NG), assegurando compatibilidade universal com o formato binário 5+ da **Address Library** (versões 1.6.1130, 1.6.1170 e 1.7.104+).
 
----
 
-## 🎨 1. Design de Interface (Inspirado em Skyrim & SkyUI)
-
-A interface segue estritamente a identidade visual nórdica e imersiva do Skyrim e SkyUI:
-- **Esquema de Cores:**
-  - Fundo principal: Ardósia/obsidiana escura semi-translúcida (`#0a0b0e`, `#12151c`).
-  - Painéis secundários: Efeito de vidro escuro fosco (*glassmorphism* com `backdrop-blur`).
-  - Tipografia e Ícones: Prata/pergaminho suave (`#d8dadf`) e branco puro para destaque.
-  - Acentos Interativos: Azul nórdico frio (`#5ca0d3`) no hover e dourado Dwemer/Daédrico (`#c8a86b`) para ações concluídas e estados de sucesso.
-  - Divisórias: Linhas finas de 1px com o símbolo clássico de losango central (`◇`).
-- **Fontes:**
-  - Títulos: Tipografia nórdica clássica (*Cinzel*).
-  - Terminal e Logs: Monospace de alta legibilidade (*JetBrains Mono* / *Fira Code*).
-  - Textos de Apoio: Sans-serif moderna e nítida (*Inter*).
-- **Componentes Temáticos:**
-  - Barra de progresso temática (estilo barra de Magicka / Stamina / Vida).
-  - Terminal embutido com streaming em tempo real das saídas do `git`, `vcpkg`, `cmake` e `msbuild`.
-  - Notificações de conclusão estilizadas no formato "Objetivo Concluído" / "Quest Completed" com efeito sonoro harmônico nórdico sintetizado (Web Audio API).
-
----
-
-## 🌐 2. Internacionalização (i18n)
-
-Suporte nativo a múltiplos idiomas com troca a quente (sem reiniciar a aplicação):
-- 🇧🇷 **Português do Brasil** (`pt-BR`) [Padrão inicial]
-- 🇺🇸 **Inglês** (`en-US`)
-- 🇪🇸 **Espanhol** (`es-ES`)
-
-Todos os textos, botões, diagnósticos de erro e mensagens de progresso são centralizados em `src/renderer/locales/`.
-
----
-
-## ⚙️ 3. Modos de Operação e Arquitetura
+## ⚙️ Modos de Operação e Arquitetura
 
 O **SKSE Forge** disponibiliza dois modos complementares para modernização de mods:
 
@@ -88,56 +56,7 @@ Para mods legados ou abandonados dos quais só se possui o `.dll` ou `.zip`:
 - **Empacotador Automático:** Gera pacote pronto para Vortex e Mod Organizer 2 com zero dependência de compilador.
 
 ---
-
-## 📂 4. Estrutura de Diretórios
-
-```text
-skse-forge/
-├── electron/
-│   ├── main.ts
-│   ├── preload.ts
-│   └── services/
-│       ├── SkyrimPathService.ts
-│       ├── BinaryCompatibilityService.ts
-│       ├── EnvironmentService.ts
-│       ├── RepositoryService.ts
-│       ├── PatchEngineService.ts
-│       └── BuildService.ts
-├── src/
-│   ├── shared/
-│   │   └── types.ts
-│   └── renderer/
-│       ├── index.html
-│       ├── main.tsx
-│       ├── App.tsx
-│       ├── components/
-│       │   ├── Header.tsx
-│       │   ├── ModeSelector.tsx
-│       │   ├── ForgePanel.tsx
-│       │   ├── TransmutationPanel.tsx
-│       │   ├── ProgressStepper.tsx
-│       │   ├── ConsoleTerminal.tsx
-│       │   └── DirectoryFooter.tsx
-│       ├── locales/
-│       │   ├── pt-BR.json
-│       │   ├── en-US.json
-│       │   └── es-ES.json
-│       └── styles/
-│           └── skyrim.css
-├── test/
-│   ├── test-services.ts
-│   ├── test-pack.ts
-│   ├── test-skyrim-path.ts
-│   └── test-binary-compat.ts
-├── package.json
-├── tailwind.config.cjs
-├── tsconfig.json
-└── vite.config.ts
-```
-
----
-
-## 🚀 5. Como Executar
+## 🚀 Como Executar
 
 ### Pré-requisitos
 - **Node.js** (v18+)
@@ -168,7 +87,7 @@ npm test
 
 ---
 
-## 📦 6. Instalação do Pacote Forjado no Skyrim
+## 📦 Instalação do Pacote Forjado no Skyrim
 
 Ao término da compilação:
 1. O aplicativo exibirá o banner **OBJETIVO CONCLUÍDO** e gerará o arquivo:
