@@ -72,8 +72,8 @@ export class RepositoryService {
     // Sanitize repo name from URL with compact naming to avoid Windows MAX_PATH limits
     const urlParts = gitUrl.trim().replace(/\.git$/, '').split(/[/:]/);
     const rawRepoName = urlParts[urlParts.length - 1] || 'skse-plugin';
-    const repoName = rawRepoName.replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 24);
-    const timestamp = Date.now().toString(36);
+    const repoName = rawRepoName.replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 16);
+    const timestamp = Date.now().toString(36).slice(-6);
     const destination = path.join(this.getWorkspacesDir(), `${repoName}_${timestamp}`);
 
     onLog(`Iniciando clone de ${gitUrl}...`, 'info');

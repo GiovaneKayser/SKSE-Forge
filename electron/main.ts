@@ -190,6 +190,7 @@ ipcMain.handle('pipeline:start', async (_, payload: PipelinePayload): Promise<Pi
         cmakeBinary,
         vcpkgToolchain,
         modName: finalModName,
+        patchEngine: patchService,
       },
       (line: string, type: 'stdout' | 'stderr' | 'info' | 'warn' | 'error' | 'success') => emitLog(line, type)
     );

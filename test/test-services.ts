@@ -67,6 +67,36 @@ add_custom_command(
   fs.mkdirSync(path.join(tempDir, 'src'), { recursive: true });
   fs.writeFileSync(path.join(tempDir, 'src', 'PCH.h'), dummyPCH);
 
+  // 2b. Create dummy Hooks.cpp to test source hardening
+  const dummyHooks = `
+#include "Hooks.h"
+
+bool UpdateQuests(RE::TESQuestTarget* a_questTarget)
+{
+    auto player = RE::PlayerCharacter::GetSingleton();
+    RE::BSTArray<RE::BGSInstancedQuestObjective>& playerObjectives = REL::Module::IsVR() ?
+        player->GetVRPlayerRuntimeData().objectives :
+        player->GetPlayerRuntimeData().objectives;
+
+    for (int ageIndex = playerObjectives.size() - 1; ageIndex >= 0; ageIndex--)
+    {
+        RE::BGSInstancedQuestObjective* playerObjective = &playerObjectives[ageIndex];
+        RE::BGSQuestObjective* questObjective = playerObjective->objective;
+
+        for (int j = 0; j < questObjective->numTargets; j++)
+        {
+            auto questObjectiveTarget = reinterpret_cast<RE::TESQuestTarget*>(a_questTarget->unk00);
+            if (questObjectiveTarget == questObjective->targets[j])
+            {
+                return true;
+            }
+        }
+    }
+    return false;
+}
+`;
+  fs.writeFileSync(path.join(tempDir, 'src', 'Hooks.cpp'), dummyHooks);
+
   // 3. Create dummy portfile.cmake
   const portsDir = path.join(tempDir, 'ports', 'commonlibsse');
   fs.mkdirSync(portsDir, { recursive: true });
@@ -166,6 +196,20 @@ vcpkg_from_github(
   const modifiedGitmodules = fs.readFileSync(path.join(tempDir, '.gitmodules'), 'utf8');
   if (!modifiedGitmodules.includes('https://github.com/CharmedBaryon/CommonLibSSE-NG.git')) {
     throw new Error('.gitmodules was not updated to CommonLibSSE-NG URL');
+  }
+
+  const modifiedHooks = fs.readFileSync(path.join(tempDir, 'src', 'Hooks.cpp'), 'utf8');
+  if (!modifiedHooks.includes('[SKSE Forge] Quest objective pointer guard')) {
+    throw new Error('Quest objective pointer guard was not injected into Hooks.cpp');
+  }
+  if (!modifiedHooks.includes('0xFFFFFFFF')) {
+    throw new Error('Sentinel 0xFFFFFFFF check was not injected into Hooks.cpp');
+  }
+  if (!modifiedHooks.includes('[SKSE Forge] Dynamic PlayerCharacter objectives offset')) {
+    throw new Error('Dynamic PlayerCharacter objectives offset was not injected into Hooks.cpp');
+  }
+  if (!modifiedHooks.includes('[SKSE Forge] Player null check')) {
+    throw new Error('Player null check was not injected into Hooks.cpp');
   }
 
   // Cleanup temp dir 1
@@ -295,11 +339,53 @@ namespace REL {
   const testModuleHFile = path.join(testIdHDir, 'Module.h');
   fs.writeFileSync(testModuleHFile, unpatchedModuleH, 'utf8');
 
+  const unpatchedRelocationH = `
+namespace REL {
+    class header_t {
+    public:
+        void read(istream_t& a_in, std::uint8_t a_formatVersion)
+        {
+            std::int32_t format{};
+            a_in.readin(format);
+            if (format != a_formatVersion) {
+                stl::report_and_fail(
+                    std::format(
+                        "Unsupported address library format: {}\\n"
+                        "This means this script extender plugin is incompatible with the address "
+                        "library available for this version of the game, and thus does not "
+                        "support it."sv,
+                        format));
+            }
+        }
+        [[nodiscard]] Version version() const noexcept { return _version; }
+    private:
+        Version      _version;
+        std::int32_t _pointerSize{ 0 };
+        std::int32_t _addressCount{ 0 };
+    };
+}`;
+  const testRelHFile = path.join(testIdHDir, 'Relocation.h');
+  fs.writeFileSync(testRelHFile, unpatchedRelocationH, 'utf8');
+
   // Invoke private ensureFormat5Headers via reflection or instance
   const buildSvc = new BuildService();
   (buildSvc as any).ensureFormat5Headers(tempDir3, path.join(tempDir3, 'build'), (msg: string) => {
     console.log(`  [shield log] ${msg}`);
   });
+
+  const patchedRelH = fs.readFileSync(testRelHFile, 'utf8');
+  if (!patchedRelH.includes('format == 5')) {
+    throw new Error('ensureFormat5Headers failed to inject format == 5 into Relocation.h');
+  }
+  if (!patchedRelH.includes('format != 2 && format != 1')) {
+    throw new Error('ensureFormat5Headers failed to inject Address Library format 1 & 2 compatibility into Relocation.h');
+  }
+  if (!patchedRelH.includes('format() const noexcept')) {
+    throw new Error('ensureFormat5Headers failed to inject format() method into Relocation.h');
+  }
+  if (!patchedRelH.includes('_format{ 0 }')) {
+    throw new Error('ensureFormat5Headers failed to inject _format member into Relocation.h');
+  }
 
   const patchedIdH = fs.readFileSync(testIdHFile, 'utf8');
   if (!patchedIdH.includes('format == 5')) {

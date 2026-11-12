@@ -1,6 +1,7 @@
 import { spawn, ChildProcess } from 'child_process';
 import * as fs from 'fs';
 import * as path from 'path';
+import * as os from 'os';
 import archiver from 'archiver';
 import { shell, clipboard } from 'electron';
 import { BinaryCompatibilityService } from './BinaryCompatibilityService';
@@ -11,6 +12,8 @@ export interface BuildOptions {
   cmakeBinary: string;
   vcpkgToolchain?: string;
   modName: string;
+  patchEngine?: any;
+  clean?: boolean;
 }
 
 export interface BuildResult {
@@ -60,24 +63,22 @@ export class BuildService {
     const { projectDir, cmakeBinary, vcpkgToolchain, modName } = options;
     const buildDir = path.join(projectDir, 'build');
 
-    // 0. CLEANUP: Clear any broken/cached vcpkg port build and binary directories to ensure fresh build with Format 5 support
-    const cleanupTargets = [
-      path.join(buildDir, 'vcpkg_installed', 'vcpkg', 'blds', 'commonlibsse-ng'),
-      path.join(buildDir, 'vcpkg_installed', 'vcpkg', 'blds', 'commonlibsse'),
-      path.join(buildDir, 'vcpkg_installed', 'vcpkg', 'pkgs', 'commonlibsse-ng_x64-windows-static-md'),
-      path.join(buildDir, 'vcpkg_installed', 'vcpkg', 'pkgs', 'commonlibsse_x64-windows-static-md'),
-      path.join(buildDir, 'vcpkg_installed', 'x64-windows-static-md', 'lib', 'CommonLibSSE.lib'),
-      path.join(buildDir, 'vcpkg_installed', 'x64-windows-static-md', 'share', 'CommonLibSSE'),
-      path.join(buildDir, 'vcpkg_installed', 'x64-windows-static-md', 'share', 'commonlibsse-ng'),
-      path.join(buildDir, 'vcpkg_installed', 'x64-windows-static-md', 'include', 'REL'),
-    ];
-    for (const target of cleanupTargets) {
-      if (fs.existsSync(target)) {
-        try {
-          fs.rmSync(target, { recursive: true, force: true });
-          onLog(`[vcpkg] Limpo cache de compilação anterior em: ${target}`, 'info');
-        } catch {
-          // ignore if locked
+    // 0. CLEANUP: Clear any broken/cached vcpkg port build and binary directories only on explicit clean
+    if (options.clean) {
+      const cleanupTargets = [
+        path.join(buildDir, 'vcpkg_installed', 'vcpkg', 'blds', 'commonlibsse-ng'),
+        path.join(buildDir, 'vcpkg_installed', 'vcpkg', 'blds', 'commonlibsse'),
+        path.join(buildDir, 'vcpkg_installed', 'vcpkg', 'pkgs', 'commonlibsse-ng_x64-windows-static-md'),
+        path.join(buildDir, 'vcpkg_installed', 'vcpkg', 'pkgs', 'commonlibsse_x64-windows-static-md'),
+      ];
+      for (const target of cleanupTargets) {
+        if (fs.existsSync(target)) {
+          try {
+            fs.rmSync(target, { recursive: true, force: true });
+            onLog(`[vcpkg] Limpo cache de compilação anterior em: ${target}`, 'info');
+          } catch {
+            // ignore if locked
+          }
         }
       }
     }
@@ -102,8 +103,10 @@ export class BuildService {
     const overlayCandidates = [
       path.join(sourceDir, 'overlayports'),
       path.join(sourceDir, 'ports'),
+      path.join(sourceDir, 'cmake', 'ports'),
       path.join(projectDir, 'overlayports'),
       path.join(projectDir, 'ports'),
+      path.join(projectDir, 'cmake', 'ports'),
     ];
     for (const cand of overlayCandidates) {
       if (fs.existsSync(cand)) {
@@ -124,12 +127,93 @@ export class BuildService {
     // Set 64-bit architecture for Skyrim SE/AE MSVC generator
     cmakeArgs.push('-A', 'x64');
 
-    await this.runProcess(
-      cmakeBinary,
-      cmakeArgs,
-      projectDir,
-      (line, type) => onLog(`[CMake Configure] ${line}`, type)
-    );
+    // Execução da Fase 1 - TÉCNICA 1: TÉCNICA PRIMÁRIA (PADRÃO)
+    let configureSuccess = false;
+    let configureLogHistory: string[] = [];
+
+    const captureConfigureLog = (line: string, type: 'stdout' | 'stderr') => {
+      configureLogHistory.push(line);
+      onLog(`[CMake Configure] ${line}`, type);
+    };
+
+    try {
+      onLog(`[CMake] Executando configuração com Técnica Primária (padrão)...`, 'info');
+      await this.runProcess(
+        cmakeBinary,
+        cmakeArgs,
+        projectDir,
+        captureConfigureLog
+      );
+      configureSuccess = true;
+      onLog(`[CMake] Configuração da Técnica Primária concluída com sucesso!`, 'success');
+    } catch (err: any) {
+      if (this.isCancelled) {
+        throw new Error('Operação de configuração cancelada pelo usuário.');
+      }
+      onLog(`[Aviso] Falha na Técnica Primária: ${err.message}`, 'warn');
+    }
+
+    // SE A TÉCNICA 1 FALHAR -> ATIVAR NOVA TÉCNICA (TÉCNICA 2 - AUTO-HEALING PROGRESSIVO)
+    if (!configureSuccess) {
+      onLog(`[Auto-Healing] Ativando Nova Técnica de Recuperação e Mitigação de Ambiente...`, 'warn');
+
+      const fullLogText = configureLogHistory.join('\n');
+      const isPathLengthIssue = /C1083|CMAKE_OBJECT_PATH_MAX|object file directory|TryCompile|Invalid argument|testCXXCompiler/i.test(fullLogText);
+      const missingPackageMatch = fullLogText.match(/Could not find a package configuration file provided by "([A-Za-z0-9_-]+)"/i);
+      const isHashMismatch = /unexpected hash/i.test(fullLogText);
+      const isCommonLibSymbolIssue = /GetRuntimeData2|WinAPI|RUNTIME_SSE_1_6_1130|REL::Module::reset/i.test(fullLogText);
+
+      // Tratamento A: Hash mismatch no download do vcpkg (GitHub tarball checksum update)
+      if (isHashMismatch && options.patchEngine) {
+        options.patchEngine.fixVcpkgHashMismatch(projectDir, fullLogText, (line: string, type: any) => onLog(line, type));
+      }
+
+      // Tratamento B: Dependência ausente do CMakeLists.txt não declarada no manifesto vcpkg
+      if (missingPackageMatch && missingPackageMatch[1] && options.patchEngine) {
+        const missingPkg = missingPackageMatch[1];
+        options.patchEngine.injectMissingVcpkgDependency(projectDir, missingPkg, (line: string, type: any) => onLog(line, type));
+      }
+
+      // Tratamento C: Upgrade para CommonLibSSE-NG 4.0.0+ se símbolos modernos faltarem
+      if (isCommonLibSymbolIssue && options.patchEngine) {
+        options.patchEngine.upgradeToModernCommonLibVR(projectDir, (line: string, type: any) => onLog(line, type));
+      }
+
+      // Tratamento D: Isolamento de caminhos curtos (Short Paths) para vcpkg buildtrees e packages (mitigação definitiva de MAX_PATH)
+      let shortBlds = 'C:\\sf_blds';
+      let shortPkgs = 'C:\\sf_pkgs';
+      try {
+        if (!fs.existsSync(shortBlds)) fs.mkdirSync(shortBlds, { recursive: true });
+        if (!fs.existsSync(shortPkgs)) fs.mkdirSync(shortPkgs, { recursive: true });
+      } catch {
+        shortBlds = path.join(os.tmpdir(), 'sf_b');
+        shortPkgs = path.join(os.tmpdir(), 'sf_p');
+        if (!fs.existsSync(shortBlds)) fs.mkdirSync(shortBlds, { recursive: true });
+        if (!fs.existsSync(shortPkgs)) fs.mkdirSync(shortPkgs, { recursive: true });
+      }
+
+      const vcpkgShortOpts = `--x-buildtrees-root=${shortBlds.replace(/\\/g, '/')};--x-packages-root=${shortPkgs.replace(/\\/g, '/')}`;
+
+      const recoveryCmakeArgs = [...cmakeArgs];
+      if (!recoveryCmakeArgs.some((a) => a.startsWith('-DVCPKG_INSTALL_OPTIONS='))) {
+        recoveryCmakeArgs.push(`-DVCPKG_INSTALL_OPTIONS=${vcpkgShortOpts}`);
+      }
+      if (!recoveryCmakeArgs.includes('-DCMAKE_OBJECT_PATH_MAX=500')) {
+        recoveryCmakeArgs.push('-DCMAKE_OBJECT_PATH_MAX=500');
+      }
+
+      this.clearFailedConfigureCache(buildDir);
+
+      onLog(`[Auto-Healing] Reexecutando configuração com Nova Técnica (Short Paths e dependências resolvidas)...`, 'info');
+      await this.runProcess(
+        cmakeBinary,
+        recoveryCmakeArgs,
+        projectDir,
+        (line, type) => onLog(`[CMake Configure (Nova Técnica)] ${line}`, type)
+      );
+
+      onLog(`[Auto-Healing] Nova Técnica aplicada com êxito! Configuração concluída.`, 'success');
+    }
 
     if (this.isCancelled) {
       throw new Error('Operação de configuração cancelada pelo usuário.');
@@ -142,12 +226,70 @@ export class BuildService {
     onLog(`[MSBuild] Iniciando compilação da DLL com MSVC em modo Release...`, 'info');
 
     const buildArgs = ['--build', 'build', '--config', 'Release'];
-    await this.runProcess(
-      cmakeBinary,
-      buildArgs,
-      projectDir,
-      (line, type) => onLog(`[CMake Build] ${line}`, type)
-    );
+    let buildLogHistory: string[] = [];
+
+    try {
+      await this.runProcess(
+        cmakeBinary,
+        buildArgs,
+        projectDir,
+        (line, type) => {
+          buildLogHistory.push(line);
+          onLog(`[CMake Build] ${line}`, type);
+        }
+      );
+    } catch (err: any) {
+      if (this.isCancelled) throw err;
+
+      const buildLogText = buildLogHistory.join('\n');
+      const isCommonLibSymbolIssue = /GetRuntimeData2|WinAPI|RUNTIME_SSE_1_6_1130|reset.*REL::Module/i.test(buildLogText);
+
+      if (isCommonLibSymbolIssue && options.patchEngine) {
+        onLog(
+          `[Auto-Healing] Detectados símbolos modernos ausentes na compilação do mod. Ativando Nova Técnica: Upgrade para CommonLibSSE-NG 4.0.0+ (alandtse/CommonLibVR)...`,
+          'warn'
+        );
+        options.patchEngine.upgradeToModernCommonLibVR(projectDir, (line: string, type: any) => onLog(line, type));
+
+        this.clearFailedConfigureCache(buildDir);
+
+        let shortBlds = 'C:\\sf_blds';
+        let shortPkgs = 'C:\\sf_pkgs';
+        try {
+          if (!fs.existsSync(shortBlds)) fs.mkdirSync(shortBlds, { recursive: true });
+          if (!fs.existsSync(shortPkgs)) fs.mkdirSync(shortPkgs, { recursive: true });
+        } catch {
+          shortBlds = path.join(os.tmpdir(), 'sf_b');
+          shortPkgs = path.join(os.tmpdir(), 'sf_p');
+        }
+
+        const recoveryCmakeArgs = [
+          ...cmakeArgs.filter((a) => !a.startsWith('-DVCPKG_INSTALL_OPTIONS=')),
+          `-DVCPKG_INSTALL_OPTIONS=--x-buildtrees-root=${shortBlds.replace(/\\/g, '/')};--x-packages-root=${shortPkgs.replace(/\\/g, '/')}`,
+          '-DCMAKE_OBJECT_PATH_MAX=500',
+        ];
+
+        onLog(`[Auto-Healing] Reconfigurando com CommonLibSSE-NG 4.0.0+...`, 'info');
+        await this.runProcess(
+          cmakeBinary,
+          recoveryCmakeArgs,
+          projectDir,
+          (line, type) => onLog(`[CMake Configure (Nova Técnica)] ${line}`, type)
+        );
+
+        this.ensureFormat5Headers(projectDir, buildDir, (line, type) => onLog(`[Format 5 Shield] ${line}`, type));
+
+        onLog(`[Auto-Healing] Recompilando DLL com MSVC em modo Release...`, 'info');
+        await this.runProcess(
+          cmakeBinary,
+          buildArgs,
+          projectDir,
+          (line, type) => onLog(`[CMake Build (Nova Técnica)] ${line}`, type)
+        );
+      } else {
+        throw err;
+      }
+    }
 
     if (this.isCancelled) {
       throw new Error('Operação de compilação cancelada pelo usuário.');
@@ -494,11 +636,145 @@ export class BuildService {
     buildDir: string,
     onLog: (line: string, type: 'info' | 'warn' | 'success') => void
   ): void {
-    const idHFiles = this.findFilesRecursively(buildDir, (f) => f.endsWith(path.join('REL', 'ID.h')));
-    const projectHFiles = this.findFilesRecursively(projectDir, (f) => f.endsWith(path.join('REL', 'ID.h')) && !f.includes(buildDir));
-    const allHFiles = Array.from(new Set([...idHFiles, ...projectHFiles]));
-
     let patchedAny = false;
+
+    const rootSearchDirs = [
+      buildDir,
+      projectDir,
+      'C:\\sf_pkgs',
+      'C:\\sf_blds',
+      path.join(os.tmpdir(), 'sf_p'),
+      path.join(os.tmpdir(), 'sf_b'),
+    ].filter((d) => fs.existsSync(d));
+
+    // 1. Inspect REL/Relocation.h (CommonLibVR / CommonLibSSE-NG 4.0.0+)
+    const relHFiles = rootSearchDirs.flatMap((d) =>
+      this.findFilesRecursively(d, (f) => f.endsWith(path.join('REL', 'Relocation.h')), 0, 10)
+    );
+    const allRelHFiles = Array.from(new Set(relHFiles));
+
+    for (const rFile of allRelHFiles) {
+      try {
+        let content = fs.readFileSync(rFile, 'utf8');
+        const needsFormat5 = !content.includes('format == 5') || content.includes('if (format != a_formatVersion)');
+        if (needsFormat5) {
+          onLog(`Detectado include/REL/Relocation.h sem suporte completo à Address Library em: ${path.relative(projectDir, rFile)}. Aplicando injeção em memória...`, 'info');
+          const isCrlf = content.includes('\r\n');
+          content = content.replace(/\r\n/g, '\n');
+
+          // 1.1 header_t::read
+          const readRegex = /std::int32_t\s+format\{\};\s*a_in\.readin\(format\);\s*if\s*\(\s*format\s*!=\s*a_formatVersion\s*\)\s*\{[\s\S]*?stl::report_and_fail\([\s\S]*?format\)\);\s*\}/;
+          const readReplacement = `std::int32_t format{};
+				a_in.readin(format);
+				_format = format;
+				if (format == 5) {
+					std::uint32_t ver[4]{};
+					a_in.readin(ver);
+					for (std::size_t i = 0; i < 4; ++i) {
+						_version[i] = static_cast<std::uint16_t>(ver[i]);
+					}
+					char name[64]{};
+					a_in.readin(name);
+					a_in.readin(_pointerSize);
+					std::int32_t dataFormat{};
+					a_in.readin(dataFormat);
+					a_in.readin(_addressCount);
+					return;
+				}
+				if (format != a_formatVersion && format != 2 && format != 1) {
+					stl::report_and_fail(
+						std::format(
+							"Unsupported address library format: {}\\n"
+							"This means this script extender plugin is incompatible with the address "
+							"library available for this version of the game, and thus does not "
+							"support it."sv,
+							format));
+				}`;
+
+          if (readRegex.test(content)) {
+            content = content.replace(readRegex, readReplacement);
+          }
+
+          // 1.2 header_t members
+          const memberRegex = /\[\[nodiscard\]\]\s*Version\s+version\(\)\s*const\s*noexcept\s*\{\s*return\s+_version;\s*\}\s*private:\s*Version\s+_version;\s*std::int32_t\s+_pointerSize\{\s*0\s*\};\s*std::int32_t\s+_addressCount\{\s*0\s*\};\s*\};/;
+          const memberReplacement = `[[nodiscard]] Version version() const noexcept { return _version; }
+			[[nodiscard]] std::int32_t format() const noexcept { return _format; }
+
+		private:
+			Version      _version;
+			std::int32_t _pointerSize{ 0 };
+			std::int32_t _addressCount{ 0 };
+			std::int32_t _format{ 0 };
+		};`;
+
+          if (memberRegex.test(content)) {
+            content = content.replace(memberRegex, memberReplacement);
+          }
+
+          // 1.3 load_file format 5 unpacking
+          const loadFileRegex = /_id2offset\s*=\s*\{\s*static_cast<mapping_t\*>\(_mmap\.data\(\)\),\s*header\.address_count\(\)\s*\};\s*unpack_file\(in,\s*header,\s*a_failOnError\);\s*std::sort\([\s\S]*?\}\);/;
+          const loadFileReplacement = `_id2offset = { static_cast<mapping_t*>(_mmap.data()), header.address_count() };
+					if (header.format() == 5) {
+						for (std::size_t id = 0; id < header.address_count(); ++id) {
+							std::uint32_t off = 0;
+							in.readin(off);
+							_id2offset[id] = { static_cast<std::uint64_t>(id), static_cast<std::uint64_t>(off) };
+						}
+					} else {
+						unpack_file(in, header, a_failOnError);
+						std::sort(
+							_id2offset.begin(),
+							_id2offset.end(),
+							[](auto&& a_lhs, auto&& a_rhs) {
+								return a_lhs.id < a_rhs.id;
+							});
+					}`;
+
+          if (loadFileRegex.test(content)) {
+            content = content.replace(loadFileRegex, loadFileReplacement);
+          }
+
+          // 1.4 load() filename fallback
+          const loadRegex = /load_file\(filename,\s*version,\s*Module::IsAE\(\)\s*\?\s*2\s*:\s*1,\s*true\);/;
+          const loadReplacement = `if (!load_file(filename, version, Module::IsAE() ? 2 : 1, false)) {
+					const auto altFilename =
+						stl::utf8_to_utf16(
+							Module::IsAE() ?
+								std::format("Data/SKSE/Plugins/version-{}.bin"sv,
+									version.string()) :
+								std::format("Data/SKSE/Plugins/versionlib-{}.bin"sv,
+									version.string()))
+							.value_or(L"<unknown filename>"s);
+					load_file(altFilename, version, Module::IsAE() ? 2 : 1, true);
+				}`;
+
+          if (loadRegex.test(content)) {
+            content = content.replace(loadRegex, loadReplacement);
+          }
+
+          // 1.5 Module Skyrim 1.7+ (AE Runtime) fix in Relocation.h
+          const switchRegex = /switch\s*\(\s*([A-Za-z0-9_]+)\[1\]\s*\)\s*\{\s*case\s*4\s*:\s*([A-Za-z0-9_.]+)\s*=\s*Runtime::VR;\s*break;\s*case\s*6\s*:\s*([A-Za-z0-9_.]+)\s*=\s*Runtime::AE;\s*break;\s*default\s*:\s*([A-Za-z0-9_.]+)\s*=\s*Runtime::SE;\s*\}/g;
+          content = content.replace(switchRegex, (match, v, r1, r2, r3) => {
+            return `if (${v}[1] == 4) {\n\t\t\t\t\t${r1} = Runtime::VR;\n\t\t\t\t} else if (${v}[1] >= 6) {\n\t\t\t\t\t${r2} = Runtime::AE;\n\t\t\t\t} else {\n\t\t\t\t\t${r3} = Runtime::SE;\n\t\t\t\t}`;
+          });
+
+          if (isCrlf) content = content.replace(/\n/g, '\r\n');
+          fs.writeFileSync(rFile, content, 'utf8');
+          patchedAny = true;
+          onLog(`Suporte ao Formato 5 e interoperabilidade injetados com sucesso em: ${path.relative(projectDir, rFile)}`, 'success');
+        } else {
+          onLog(`Cabeçalho validado com suporte à Address Library: ${path.relative(projectDir, rFile)}`, 'info');
+        }
+      } catch (err: any) {
+        onLog(`Aviso ao inspecionar Relocation.h (${rFile}): ${err.message}`, 'warn');
+      }
+    }
+
+    // 2. Inspect REL/ID.h (CharmedBaryon CommonLibSSE-NG)
+    const idHFiles = rootSearchDirs.flatMap((d) =>
+      this.findFilesRecursively(d, (f) => f.endsWith(path.join('REL', 'ID.h')), 0, 10)
+    );
+    const allHFiles = Array.from(new Set(idHFiles));
 
     for (const hFile of allHFiles) {
       try {
@@ -589,10 +865,11 @@ export class BuildService {
       }
     }
 
-    // Inspect REL/Module.h files for Skyrim 1.7+ (AE Runtime) fix
-    const modHFiles = this.findFilesRecursively(buildDir, (f) => f.endsWith(path.join('REL', 'Module.h')));
-    const projModHFiles = this.findFilesRecursively(projectDir, (f) => f.endsWith(path.join('REL', 'Module.h')) && !f.includes(buildDir));
-    const allModHFiles = Array.from(new Set([...modHFiles, ...projModHFiles]));
+    // 3. Inspect REL/Module.h files for Skyrim 1.7+ (AE Runtime) fix
+    const modHFiles = rootSearchDirs.flatMap((d) =>
+      this.findFilesRecursively(d, (f) => f.endsWith(path.join('REL', 'Module.h')), 0, 10)
+    );
+    const allModHFiles = Array.from(new Set(modHFiles));
 
     for (const mFile of allModHFiles) {
       try {
@@ -624,8 +901,10 @@ export class BuildService {
       }
     }
 
-    // Inspect ID.cpp files
-    const cppFiles = this.findFilesRecursively(buildDir, (f) => f.endsWith(path.join('REL', 'ID.cpp')));
+    // 4. Inspect ID.cpp files
+    const cppFiles = rootSearchDirs.flatMap((d) =>
+      this.findFilesRecursively(d, (f) => f.endsWith(path.join('REL', 'ID.cpp')), 0, 10)
+    );
     for (const cFile of cppFiles) {
       try {
         let content = fs.readFileSync(cFile, 'utf8');
@@ -662,7 +941,7 @@ export class BuildService {
       }
     }
 
-    // If headers or cpp were patched in-place, delete CommonLibSSE.lib to ensure clean relink
+    // If headers or cpp were patched in-place, delete cached libraries, PCH, and DLLs to force a clean recompile
     if (patchedAny) {
       const libCandidates = [
         path.join(buildDir, 'vcpkg_installed', 'x64-windows-static-md', 'lib', 'CommonLibSSE.lib'),
@@ -678,21 +957,43 @@ export class BuildService {
           }
         }
       }
+
+      // Remove cached PCH files so MSVC doesn't reuse stale precompiled headers
+      const pchFiles = this.findFilesRecursively(buildDir, (f) => f.toLowerCase().endsWith('.pch'), 0, 10);
+      for (const pch of pchFiles) {
+        try {
+          fs.rmSync(pch, { force: true });
+          onLog(`Removido cabeçalho pré-compilado ${path.basename(pch)} para forçar recompilação`, 'info');
+        } catch {
+          // ignore
+        }
+      }
+
+      // Remove previously generated DLLs to ensure rebuild
+      const existingDlls = this.findFilesRecursively(buildDir, (f) => f.toLowerCase().endsWith('.dll'), 0, 10);
+      for (const oldDll of existingDlls) {
+        try {
+          fs.rmSync(oldDll, { force: true });
+          onLog(`Removido binário anterior ${path.basename(oldDll)} para forçar reconstrução com Formato 5`, 'info');
+        } catch {
+          // ignore
+        }
+      }
     }
   }
 
   /**
    * Helper to recursively find files matching a predicate
    */
-  private findFilesRecursively(dir: string, predicate: (filePath: string) => boolean, depth = 0): string[] {
-    if (depth > 6 || !fs.existsSync(dir)) return [];
+  private findFilesRecursively(dir: string, predicate: (filePath: string) => boolean, depth = 0, maxDepth = 10): string[] {
+    if (depth > maxDepth || !fs.existsSync(dir)) return [];
     const results: string[] = [];
     try {
       const entries = fs.readdirSync(dir, { withFileTypes: true });
       for (const entry of entries) {
         const full = path.join(dir, entry.name);
         if (entry.isDirectory()) {
-          results.push(...this.findFilesRecursively(full, predicate, depth + 1));
+          results.push(...this.findFilesRecursively(full, predicate, depth + 1, maxDepth));
         } else if (entry.isFile() && predicate(full)) {
           results.push(full);
         }
@@ -713,6 +1014,27 @@ export class BuildService {
       const folder = path.dirname(zipPath);
       if (fs.existsSync(folder)) {
         shell.openPath(folder);
+      }
+    }
+  }
+
+  /**
+   * Helper to clean up cache files when configuring fails, allowing recovery attempts
+   */
+  private clearFailedConfigureCache(buildDir: string): void {
+    const targets = [
+      path.join(buildDir, 'CMakeCache.txt'),
+      path.join(buildDir, 'CMakeFiles'),
+      path.join(buildDir, 'vcpkg_installed', 'vcpkg', 'blds', 'commonlibsse-ng'),
+      path.join(buildDir, 'vcpkg_installed', 'vcpkg', 'pkgs', 'commonlibsse-ng_x64-windows-static-md'),
+    ];
+    for (const target of targets) {
+      if (fs.existsSync(target)) {
+        try {
+          fs.rmSync(target, { recursive: true, force: true });
+        } catch {
+          // ignore
+        }
       }
     }
   }

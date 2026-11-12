@@ -3,7 +3,7 @@ import * as path from 'path';
 
 export interface AppliedPatch {
   id: string;
-  category: 'commonlib_ng' | 'nominmax' | 'legacy_libs' | 'post_build' | 'cpp_standard';
+  category: 'commonlib_ng' | 'nominmax' | 'legacy_libs' | 'post_build' | 'cpp_standard' | 'source_hardening';
   description: string;
   filePath: string;
   details?: string;
@@ -21,13 +21,27 @@ export interface PatchReport {
 
 export class PatchEngineService {
   /**
-   * Verified SHA512 and Git commit/branch for modern CommonLibSSE-NG (with Address Library Format 5 support)
+   * Verified SHA512 and Git commit/branch for baseline CommonLibSSE-NG (CharmedBaryon v3.8.2)
    */
   private readonly COMMONLIB_NG_REPO = 'CharmedBaryon/CommonLibSSE-NG';
   private readonly COMMONLIB_NG_URL = 'https://github.com/CharmedBaryon/CommonLibSSE-NG.git';
   private readonly COMMONLIB_NG_BRANCH = 'main';
   private readonly COMMONLIB_NG_COMMIT = 'b93280e832f263dbef44e44cbe2936622a02f91a';
   private readonly COMMONLIB_NG_SHA512 = 'c98a0dde8fab45d0b5ffc8241bc6437fc1b2855e5577e9b66fe4e237c35c7111c3288f0ef7a637b2a399dd38938221619331e3b49504b76ac0e1a0a2034715a6';
+
+  /**
+   * Verified SHA512 and Git commit/branch for modern community CommonLibSSE-NG (alandtse/CommonLibVR v4.0.0+)
+   * Used for modern SKSE mods (1.6.1130+, 1.6.1170+, VR, WinAPI namespace, GetRuntimeData2)
+   */
+  public readonly COMMONLIB_VR_REPO = 'alandtse/CommonLibVR';
+  public readonly COMMONLIB_VR_URL = 'https://github.com/alandtse/CommonLibVR.git';
+  public readonly COMMONLIB_VR_BRANCH = 'ng';
+  public readonly COMMONLIB_VR_COMMIT = '2b983f5281bfadd26ee20787390d2513e8ffe38a';
+  public readonly COMMONLIB_VR_SHA512 = 'af4da2fd4e6663a9aff626188c1d4d3fa0678f20fc30d397ac1ef362c7555306d9367836d31b054155ab6cb7ebf61a39fcee87a57c2461a2d862c210fbe2715e';
+
+  public readonly OPENVR_REPO = 'ValveSoftware/openvr';
+  public readonly OPENVR_COMMIT = 'ebdea152f8aac77e9a6db29682b81d762159df7e';
+  public readonly OPENVR_SHA512 = '4fb668d933ac5b73eb4e97eb29816176e500a4eaebe2480cd0411c95edfb713d58312036f15db50884a2ef5f4ca44859e108dec2b982af9163cefcfc02531f63';
 
   private readonly FORMAT_5_INJECTION = `
 # === [SKSE Forge START] INJETAR SUPORTE NATIVO AO FORMATO 5 DA ADDRESS LIBRARY (1.6.1130+, 1.6.1170+, 1.7.104+) ===
@@ -201,6 +215,156 @@ if(EXISTS "\${SOURCE_PATH}/include/REL/Module.h")
         message(STATUS "[SKSE Forge] Sucesso: Suporte a Skyrim AE (1.6+ e 1.7+) injetado em include/REL/Module.h")
     endif()
 endif()
+
+if(EXISTS "\${SOURCE_PATH}/include/REL/Relocation.h")
+    file(READ "\${SOURCE_PATH}/include/REL/Relocation.h" _REL_H)
+    string(REPLACE "\\r\\n" "\\n" _REL_H "\${_REL_H}")
+    string(FIND "\${_REL_H}" "format == 5" _REL_F5_EXISTS)
+    if(_REL_F5_EXISTS EQUAL -1)
+        set(_REL_READ_T "				std::int32_t format{};
+				a_in.readin(format);
+				if (format != a_formatVersion) {
+					stl::report_and_fail(
+						std::format(
+							\\"Unsupported address library format: {}\\\\n\\"
+							\\"This means this script extender plugin is incompatible with the address \\"
+							\\"library available for this version of the game, and thus does not \\"
+							\\"support it.\\"sv,
+							format));
+				}")
+        string(REPLACE "\\r\\n" "\\n" _REL_READ_T "\${_REL_READ_T}")
+
+        set(_REL_READ_R "				std::int32_t format{};
+				a_in.readin(format);
+				_format = format;
+				if (format == 5) {
+					std::uint32_t ver[4]{};
+					a_in.readin(ver);
+					for (std::size_t i = 0; i < 4; ++i) {
+						_version[i] = static_cast<std::uint16_t>(ver[i]);
+					}
+					char name[64]{};
+					a_in.readin(name);
+					a_in.readin(_pointerSize);
+					std::int32_t dataFormat{};
+					a_in.readin(dataFormat);
+					a_in.readin(_addressCount);
+					return;
+				}
+				if (format != a_formatVersion && format != 2 && format != 1) {
+					stl::report_and_fail(
+						std::format(
+							\\"Unsupported address library format: {}\\\\n\\"
+							\\"This means this script extender plugin is incompatible with the address \\"
+							\\"library available for this version of the game, and thus does not \\"
+							\\"support it.\\"sv,
+							format));
+				}")
+        string(REPLACE "\\r\\n" "\\n" _REL_READ_R "\${_REL_READ_R}")
+        string(REPLACE "\${_REL_READ_T}" "\${_REL_READ_R}" _REL_H "\${_REL_H}")
+
+        set(_REL_HDR_T "			[[nodiscard]] Version version() const noexcept { return _version; }
+
+		private:
+			Version      _version;
+			std::int32_t _pointerSize{ 0 };
+			std::int32_t _addressCount{ 0 };
+		};")
+        string(REPLACE "\\r\\n" "\\n" _REL_HDR_T "\${_REL_HDR_T}")
+
+        set(_REL_HDR_R "			[[nodiscard]] Version version() const noexcept { return _version; }
+			[[nodiscard]] std::int32_t format() const noexcept { return _format; }
+
+		private:
+			Version      _version;
+			std::int32_t _pointerSize{ 0 };
+			std::int32_t _addressCount{ 0 };
+			std::int32_t _format{ 0 };
+		};")
+        string(REPLACE "\\r\\n" "\\n" _REL_HDR_R "\${_REL_HDR_R}")
+        string(REPLACE "\${_REL_HDR_T}" "\${_REL_HDR_R}" _REL_H "\${_REL_H}")
+
+        set(_REL_LOAD_F_T "				} else if (_mmap.create(mapname, byteSize)) {
+					_id2offset = { static_cast<mapping_t*>(_mmap.data()), header.address_count() };
+					unpack_file(in, header, a_failOnError);
+					std::sort(
+						_id2offset.begin(),
+						_id2offset.end(),
+						[](auto&& a_lhs, auto&& a_rhs) {
+							return a_lhs.id < a_rhs.id;
+						});
+				}")
+        string(REPLACE "\\r\\n" "\\n" _REL_LOAD_F_T "\${_REL_LOAD_F_T}")
+
+        set(_REL_LOAD_F_R "				} else if (_mmap.create(mapname, byteSize)) {
+					_id2offset = { static_cast<mapping_t*>(_mmap.data()), header.address_count() };
+					if (header.format() == 5) {
+						for (std::size_t id = 0; id < header.address_count(); ++id) {
+							std::uint32_t off = 0;
+							in.readin(off);
+							_id2offset[id] = { static_cast<std::uint64_t>(id), static_cast<std::uint64_t>(off) };
+						}
+					} else {
+						unpack_file(in, header, a_failOnError);
+						std::sort(
+							_id2offset.begin(),
+							_id2offset.end(),
+							[](auto&& a_lhs, auto&& a_rhs) {
+								return a_lhs.id < a_rhs.id;
+							});
+					}
+				}")
+        string(REPLACE "\\r\\n" "\\n" _REL_LOAD_F_R "\${_REL_LOAD_F_R}")
+        string(REPLACE "\${_REL_LOAD_F_T}" "\${_REL_LOAD_F_R}" _REL_H "\${_REL_H}")
+
+        set(_REL_LOAD_T "load_file(filename, version, Module::IsAE() ? 2 : 1, true);")
+        set(_REL_LOAD_R "if (!load_file(filename, version, Module::IsAE() ? 2 : 1, false)) {
+					const auto altFilename =
+						stl::utf8_to_utf16(
+							Module::IsAE() ?
+								std::format(\\"Data/SKSE/Plugins/version-{}.bin\\"sv,
+									version.string()) :
+								std::format(\\"Data/SKSE/Plugins/versionlib-{}.bin\\"sv,
+									version.string()))
+							.value_or(L\\"<unknown filename>\\"s);
+					load_file(altFilename, version, Module::IsAE() ? 2 : 1, true);
+				}")
+        string(REPLACE "\\r\\n" "\\n" _REL_LOAD_T "\${_REL_LOAD_T}")
+        string(REPLACE "\\r\\n" "\\n" _REL_LOAD_R "\${_REL_LOAD_R}")
+        string(REPLACE "\${_REL_LOAD_T}" "\${_REL_LOAD_R}" _REL_H "\${_REL_H}")
+
+        set(_REL_VER_T "				switch (_version[1]) {
+				case 4:
+					_runtime = Runtime::VR;
+					break;
+				case 6:
+					_runtime = Runtime::AE;
+					break;
+				default:
+					_runtime = Runtime::SE;
+				}")
+        string(REPLACE "\\r\\n" "\\n" _REL_VER_T "\${_REL_VER_T}")
+
+        set(_REL_VER_R "				if (_version[1] == 4) {
+					_runtime = Runtime::VR;
+				} else if (_version[1] >= 6) {
+					_runtime = Runtime::AE;
+				} else {
+					_runtime = Runtime::SE;
+				}")
+        string(REPLACE "\\r\\n" "\\n" _REL_VER_R "\${_REL_VER_R}")
+        string(REPLACE "\${_REL_VER_T}" "\${_REL_VER_R}" _REL_H "\${_REL_H}")
+
+        file(WRITE "\${SOURCE_PATH}/include/REL/Relocation.h" "\${_REL_H}")
+
+        string(FIND "\${_REL_H}" "format == 5" _VERIFY_REL_F5)
+        if(_VERIFY_REL_F5 EQUAL -1)
+            message(FATAL_ERROR "[SKSE Forge] FATAL: Falha ao aplicar patch do Formato 5 no Relocation.h da CommonLibVR!")
+        else()
+            message(STATUS "[SKSE Forge] Sucesso: Suporte ao Formato 5 e interoperabilidade injetados em include/REL/Relocation.h")
+        endif()
+    endif()
+endif()
 # === [SKSE Forge END] ===
 `;
 
@@ -239,6 +403,12 @@ endif()
 
     // 4. Scan and patch precompiled headers (PCH.h / pch.h)
     this.patchPrecompiledHeaders(projectDir, appliedPatches, modifiedFilesSet, onLog);
+
+    // 5. Scan and synchronize CMakeLists.txt dependencies with vcpkg.json
+    this.syncCmakeDependenciesWithVcpkg(projectDir, sourceDir, appliedPatches, modifiedFilesSet, onLog);
+
+    // 6. Scan and patch C++ source files for runtime pointer safety and multi-runtime offsets
+    this.patchSourceFiles(projectDir, appliedPatches, modifiedFilesSet, onLog);
 
     onLog(
       `Escaneamento concluído: ${appliedPatches.length} correções aplicadas em ${modifiedFilesSet.size} arquivos.`,
@@ -675,8 +845,11 @@ endif()
         let portContent = fs.readFileSync(filePath, 'utf8');
         let changed = false;
 
-        // Check if port references CommonLibSSE (legacy or outdated commit)
-        if (/REPO\s+[A-Za-z0-9_.-]+\/CommonLibSSE/i.test(portContent)) {
+        // Check if port references CommonLibSSE or CommonLibVR
+        const isCommonLibVR = /REPO\s+[A-Za-z0-9_.-]+[\/\\]CommonLibVR/i.test(portContent) || /CommonLibVR/i.test(portContent);
+        const isCommonLibSSE = /REPO\s+[A-Za-z0-9_.-]+[\/\\]CommonLibSSE/i.test(portContent) || /CommonLibSSE/i.test(portContent);
+
+        if (isCommonLibVR || isCommonLibSSE) {
           hasLocalPort = true;
 
           // Ensure static linkage at top
@@ -685,173 +858,262 @@ endif()
             changed = true;
           }
 
-          // Replace REPO with CharmedBaryon/CommonLibSSE-NG
-          portContent = portContent.replace(
-            /REPO\s+[A-Za-z0-9_.-]+\/CommonLibSSE(\-NG)?/gi,
-            `REPO ${this.COMMONLIB_NG_REPO}`
-          );
-
-          // Update REF to modern commit with Address Library Format 5 support
-          portContent = portContent.replace(
-            /REF\s+[A-Za-z0-9_.-]+/gi,
-            `REF ${this.COMMONLIB_NG_COMMIT}`
-          );
-
-          // Update or inject SHA512
-          if (/SHA512\s+[A-Fa-f0-9]+/i.test(portContent)) {
-            portContent = portContent.replace(
-              /SHA512\s+[A-Fa-f0-9]+/gi,
-              `SHA512 ${this.COMMONLIB_NG_SHA512}`
-            );
-          } else {
-            portContent = portContent.replace(
-              new RegExp(`REF\\s+${this.COMMONLIB_NG_COMMIT}`, 'g'),
-              `REF ${this.COMMONLIB_NG_COMMIT}\n    SHA512 ${this.COMMONLIB_NG_SHA512}`
-            );
-          }
-
-          // Ensure HEAD_REF is set to main
-          if (/HEAD_REF\s+[A-Za-z0-9_.-]+/i.test(portContent)) {
-            portContent = portContent.replace(/HEAD_REF\s+[A-Za-z0-9_.-]+/gi, `HEAD_REF ${this.COMMONLIB_NG_BRANCH}`);
-          } else {
-            portContent = portContent.replace(
-              new RegExp(`REF\\s+${this.COMMONLIB_NG_COMMIT}`, 'g'),
-              `REF ${this.COMMONLIB_NG_COMMIT}\n    HEAD_REF ${this.COMMONLIB_NG_BRANCH}`
-            );
-          }
-
-          // Remove any previous Format 5 injection block to cleanly replace
-          portContent = portContent.replace(
-            /# === \[SKSE Forge[\s\S]*?(?:# === \[SKSE Forge END\] ===|endif\(\)\s*endif\(\)\s*endif\(\)|endif\(\)\s*endif\(\))/gi,
-            ''
-          );
-          // Clean up any stray dangling endif() left from prior malformed patches
-          portContent = portContent.replace(
-            /\n\s*endif\(\)\s*\n\s*(?:vcpkg_configure_cmake|vcpkg_cmake_configure)/gi,
-            '\nvcpkg_cmake_configure'
-          );
-          portContent = portContent.replace(
-            /\n\s*endif\(\)\s*\n\s*vcpkg_install_cmake/gi,
-            '\nvcpkg_install_cmake'
-          );
-
-          // Find insertion point: immediately after vcpkg_from_github / vcpkg_from_git
-          const vcpkgFromMatch = portContent.match(/vcpkg_from_(?:github|git)\s*\([\s\S]*?\n\)/i);
-          if (vcpkgFromMatch && vcpkgFromMatch.index !== undefined) {
-            const insertIdx = vcpkgFromMatch.index + vcpkgFromMatch[0].length;
-            portContent =
-              portContent.slice(0, insertIdx) +
-              '\n' +
-              this.FORMAT_5_INJECTION +
-              '\n' +
-              portContent.slice(insertIdx);
-            changed = true;
-          } else {
-            // Fallback: before configure command
-            const configureMatch = portContent.match(/(vcpkg_(?:cmake_configure|configure_cmake|configure)\s*\()/i);
-            if (configureMatch && configureMatch.index !== undefined) {
-              portContent =
-                portContent.slice(0, configureMatch.index) +
-                '\n' +
-                this.FORMAT_5_INJECTION +
-                '\n' +
-                portContent.slice(configureMatch.index);
+          if (isCommonLibVR) {
+            // Modern CommonLibVR port (CommonLibSSE-NG 4.0.0+)
+            const oldHash = 'd8bae2aa1c066def4a194c85dda57b0b7b758f3221c4d6ef7783c0e29fb7cff353085fbd297996762fd06fd191fb0f19646248e1448001f27c0cbf56cfa3a443';
+            if (portContent.includes(oldHash)) {
+              portContent = portContent.replace(oldHash, this.COMMONLIB_VR_SHA512);
               changed = true;
-            } else {
-              // Fallback 2: before install command
-              const installMatch = portContent.match(/(vcpkg_(?:cmake_install|install_cmake)\s*\()/i);
-              if (installMatch && installMatch.index !== undefined) {
+            }
+
+            // Remove any previous Format 5 injection block to cleanly replace
+            portContent = portContent.replace(
+              /# === \[SKSE Forge[\s\S]*?(?:# === \[SKSE Forge END\] ===|endif\(\)\s*endif\(\)\s*endif\(\)|endif\(\)\s*endif\(\))/gi,
+              ''
+            );
+
+            // Inserir FORMAT_5_INJECTION após openvr ou antes de vcpkg_configure_cmake
+            if (!portContent.includes('format == 5')) {
+              const openvrMatch = portContent.match(/file\(REMOVE_RECURSE\s+"?\$\{SOURCE_PATH_OPENVR\}\/?"?\)/i);
+              if (openvrMatch && openvrMatch.index !== undefined) {
+                const insertIdx = openvrMatch.index + openvrMatch[0].length;
                 portContent =
-                  portContent.slice(0, installMatch.index) +
+                  portContent.slice(0, insertIdx) +
                   '\n' +
                   this.FORMAT_5_INJECTION +
                   '\n' +
-                  portContent.slice(installMatch.index);
+                  portContent.slice(insertIdx);
                 changed = true;
               } else {
-                portContent += '\n' + this.FORMAT_5_INJECTION;
-                changed = true;
+                const configureMatch = portContent.match(/(vcpkg_(?:cmake_configure|configure_cmake|configure)\s*\()/i);
+                if (configureMatch && configureMatch.index !== undefined) {
+                  portContent =
+                    portContent.slice(0, configureMatch.index) +
+                    '\n' +
+                    this.FORMAT_5_INJECTION +
+                    '\n' +
+                    portContent.slice(configureMatch.index);
+                  changed = true;
+                }
               }
             }
-          }
 
-          // Ensure ENABLE_SKYRIM_SE and ENABLE_SKYRIM_AE are in OPTIONS
-          if (!portContent.includes('ENABLE_SKYRIM_SE')) {
+            // Ensure dependencies in local port's vcpkg.json declare directxtk, directxmath, fmt, etc.
+            const portVcpkgJson = path.join(path.dirname(filePath), 'vcpkg.json');
+            if (fs.existsSync(portVcpkgJson)) {
+              try {
+                const pJson = JSON.parse(fs.readFileSync(portVcpkgJson, 'utf8'));
+                let pChanged = false;
+                if (Array.isArray(pJson.dependencies)) {
+                  const requiredDeps = ['vcpkg-cmake', 'vcpkg-cmake-config', 'xbyak', 'spdlog', 'rapidcsv', 'fmt', 'directxtk', 'directxmath'];
+                  for (const dep of requiredDeps) {
+                    const hasDep = pJson.dependencies.some(
+                      (d: any) => (typeof d === 'string' ? d : d.name) === dep
+                    );
+                    if (!hasDep) {
+                      pJson.dependencies.push(dep);
+                      pChanged = true;
+                    }
+                  }
+                }
+                if (pChanged) {
+                  fs.writeFileSync(portVcpkgJson, JSON.stringify(pJson, null, 2), 'utf8');
+                  modifiedFiles.add(portVcpkgJson);
+                }
+              } catch {
+                // ignore
+              }
+            }
+
+            appliedPatches.push({
+              id: 'vcpkg-port-commonlib-vr',
+              category: 'commonlib_ng',
+              description: `Preservado e modernizado port ${this.COMMONLIB_VR_REPO} com suporte a Address Library Format 5`,
+              filePath,
+            });
+            onLog(`[Patch] Modernizado portfile.cmake em ${path.relative(projectDir, filePath)} (CommonLibSSE-NG 4.0+ com Formato 5)`, 'info');
+
+            // Garantir espelho em ports/commonlibsse-ng caso esteja aninhado
+            const standardPortDir = path.join(projectDir, 'ports', 'commonlibsse-ng');
+            if (path.resolve(path.dirname(filePath)) !== path.resolve(standardPortDir)) {
+              if (!fs.existsSync(standardPortDir)) {
+                fs.mkdirSync(standardPortDir, { recursive: true });
+              }
+              fs.writeFileSync(path.join(standardPortDir, 'portfile.cmake'), portContent, 'utf8');
+              if (fs.existsSync(portVcpkgJson)) {
+                fs.copyFileSync(portVcpkgJson, path.join(standardPortDir, 'vcpkg.json'));
+              }
+              modifiedFiles.add(path.join(standardPortDir, 'portfile.cmake'));
+            }
+          } else {
+            // Replace REPO with CharmedBaryon/CommonLibSSE-NG (Baseline technique)
             portContent = portContent.replace(
-              /OPTIONS\s+/gi,
-              'OPTIONS -DENABLE_SKYRIM_SE=on -DENABLE_SKYRIM_AE=on '
+              /REPO\s+[A-Za-z0-9_.-]+\/CommonLibSSE(\-NG)?/gi,
+              `REPO ${this.COMMONLIB_NG_REPO}`
             );
-          }
 
-          // Fix "Unknown CMake command vcpkg_cmake_config_fixup" with fallback helper idempotently
-          if (portContent.includes('vcpkg_cmake_config_fixup') || portContent.includes('vcpkg_fixup_cmake_targets')) {
-            if (portContent.includes('if(COMMAND vcpkg_cmake_config_fixup)')) {
+            // Update REF to modern commit with Address Library Format 5 support
+            portContent = portContent.replace(
+              /REF\s+[A-Za-z0-9_.-]+/gi,
+              `REF ${this.COMMONLIB_NG_COMMIT}`
+            );
+
+            // Update or inject SHA512
+            if (/SHA512\s+[A-Fa-f0-9]+/i.test(portContent)) {
               portContent = portContent.replace(
-                /if\(COMMAND vcpkg_cmake_config_fixup\)[\s\S]*?(?:endif\(\)\s*)+/gi,
-                `if(COMMAND vcpkg_cmake_config_fixup)\n    vcpkg_cmake_config_fixup(PACKAGE_NAME CommonLibSSE CONFIG_PATH lib/cmake/CommonLibSSE)\nelseif(COMMAND vcpkg_fixup_cmake_targets)\n    vcpkg_fixup_cmake_targets(CONFIG_PATH lib/cmake/CommonLibSSE TARGET_PATH share/CommonLibSSE)\nendif()\n`
+                /SHA512\s+[A-Fa-f0-9]+/gi,
+                `SHA512 ${this.COMMONLIB_NG_SHA512}`
               );
             } else {
               portContent = portContent.replace(
-                /vcpkg_cmake_config_fixup\s*\([^)]*\)/gi,
-                `if(COMMAND vcpkg_cmake_config_fixup)\n    vcpkg_cmake_config_fixup(PACKAGE_NAME CommonLibSSE CONFIG_PATH lib/cmake/CommonLibSSE)\nelseif(COMMAND vcpkg_fixup_cmake_targets)\n    vcpkg_fixup_cmake_targets(CONFIG_PATH lib/cmake/CommonLibSSE TARGET_PATH share/CommonLibSSE)\nendif()`
+                new RegExp(`REF\\s+${this.COMMONLIB_NG_COMMIT}`, 'g'),
+                `REF ${this.COMMONLIB_NG_COMMIT}\n    SHA512 ${this.COMMONLIB_NG_SHA512}`
               );
             }
-          }
 
-          // Ensure dependencies in local port's vcpkg.json declare vcpkg-cmake and vcpkg-cmake-config and bump version to 3.8.1
-          const portVcpkgJson = path.join(path.dirname(filePath), 'vcpkg.json');
-          if (fs.existsSync(portVcpkgJson)) {
-            try {
-              const pJson = JSON.parse(fs.readFileSync(portVcpkgJson, 'utf8'));
-              let pChanged = false;
+            // Ensure HEAD_REF is set to main
+            if (/HEAD_REF\s+[A-Za-z0-9_.-]+/i.test(portContent)) {
+              portContent = portContent.replace(/HEAD_REF\s+[A-Za-z0-9_.-]+/gi, `HEAD_REF ${this.COMMONLIB_NG_BRANCH}`);
+            } else {
+              portContent = portContent.replace(
+                new RegExp(`REF\\s+${this.COMMONLIB_NG_COMMIT}`, 'g'),
+                `REF ${this.COMMONLIB_NG_COMMIT}\n    HEAD_REF ${this.COMMONLIB_NG_BRANCH}`
+              );
+            }
 
-              // Enforce single versioning field
-              if (
-                pJson.version !== '3.8.2' ||
-                pJson['version-semver'] ||
-                pJson['version-date'] ||
-                pJson['version-string']
-              ) {
-                delete pJson['version-semver'];
-                delete pJson['version-date'];
-                delete pJson['version-string'];
-                pJson.version = '3.8.2';
-                pChanged = true;
-              }
+            // Remove any previous Format 5 injection block to cleanly replace
+            portContent = portContent.replace(
+              /# === \[SKSE Forge[\s\S]*?(?:# === \[SKSE Forge END\] ===|endif\(\)\s*endif\(\)\s*endif\(\)|endif\(\)\s*endif\(\))/gi,
+              ''
+            );
+            // Clean up any stray dangling endif() left from prior malformed patches
+            portContent = portContent.replace(
+              /\n\s*endif\(\)\s*\n\s*(?:vcpkg_configure_cmake|vcpkg_cmake_configure)/gi,
+              '\nvcpkg_cmake_configure'
+            );
+            portContent = portContent.replace(
+              /\n\s*endif\(\)\s*\n\s*vcpkg_install_cmake/gi,
+              '\nvcpkg_install_cmake'
+            );
 
-              if (Array.isArray(pJson.dependencies)) {
-                const requiredDeps = ['vcpkg-cmake', 'vcpkg-cmake-config', 'xbyak', 'spdlog', 'rapidcsv', 'fmt'];
-                for (const dep of requiredDeps) {
-                  const hasDep = pJson.dependencies.some(
-                    (d: any) => (typeof d === 'string' ? d : d.name) === dep
-                  );
-                  if (!hasDep) {
-                    pJson.dependencies.push(dep);
-                    pChanged = true;
-                  }
+            // Find insertion point: immediately after vcpkg_from_github / vcpkg_from_git
+            const vcpkgFromMatch = portContent.match(/vcpkg_from_(?:github|git)\s*\([\s\S]*?\n\)/i);
+            if (vcpkgFromMatch && vcpkgFromMatch.index !== undefined) {
+              const insertIdx = vcpkgFromMatch.index + vcpkgFromMatch[0].length;
+              portContent =
+                portContent.slice(0, insertIdx) +
+                '\n' +
+                this.FORMAT_5_INJECTION +
+                '\n' +
+                portContent.slice(insertIdx);
+              changed = true;
+            } else {
+              // Fallback: before configure command
+              const configureMatch = portContent.match(/(vcpkg_(?:cmake_configure|configure_cmake|configure)\s*\()/i);
+              if (configureMatch && configureMatch.index !== undefined) {
+                portContent =
+                  portContent.slice(0, configureMatch.index) +
+                  '\n' +
+                  this.FORMAT_5_INJECTION +
+                  '\n' +
+                  portContent.slice(configureMatch.index);
+                changed = true;
+              } else {
+                // Fallback 2: before install command
+                const installMatch = portContent.match(/(vcpkg_(?:cmake_install|install_cmake)\s*\()/i);
+                if (installMatch && installMatch.index !== undefined) {
+                  portContent =
+                    portContent.slice(0, installMatch.index) +
+                    '\n' +
+                    this.FORMAT_5_INJECTION +
+                    '\n' +
+                    portContent.slice(installMatch.index);
+                  changed = true;
+                } else {
+                  portContent += '\n' + this.FORMAT_5_INJECTION;
+                  changed = true;
                 }
               }
-
-              if (pChanged) {
-                fs.writeFileSync(portVcpkgJson, JSON.stringify(pJson, null, 2), 'utf8');
-                modifiedFiles.add(portVcpkgJson);
-              }
-            } catch {
-              // ignore
             }
-          }
 
-          changed = true;
-          appliedPatches.push({
-            id: 'vcpkg-port-commonlib-ng',
-            category: 'commonlib_ng',
-            description: `Atualizado portfile para ${this.COMMONLIB_NG_REPO} (${this.COMMONLIB_NG_COMMIT.slice(0, 7)}) com suporte nativo a Address Library Format 5`,
-            filePath,
-          });
-          onLog(
-            `[Patch] Atualizado portfile.cmake em ${path.relative(projectDir, filePath)} para CommonLibSSE-NG moderna (compatível com Address Library Format 5)`,
-            'info'
-          );
+            // Ensure ENABLE_SKYRIM_SE and ENABLE_SKYRIM_AE are in OPTIONS
+            if (!portContent.includes('ENABLE_SKYRIM_SE')) {
+              portContent = portContent.replace(
+                /OPTIONS\s+/gi,
+                'OPTIONS -DENABLE_SKYRIM_SE=on -DENABLE_SKYRIM_AE=on '
+              );
+            }
+
+            // Fix "Unknown CMake command vcpkg_cmake_config_fixup" with fallback helper idempotently
+            if (portContent.includes('vcpkg_cmake_config_fixup') || portContent.includes('vcpkg_fixup_cmake_targets')) {
+              if (portContent.includes('if(COMMAND vcpkg_cmake_config_fixup)')) {
+                portContent = portContent.replace(
+                  /if\(COMMAND vcpkg_cmake_config_fixup\)[\s\S]*?(?:endif\(\)\s*)+/gi,
+                  `if(COMMAND vcpkg_cmake_config_fixup)\n    vcpkg_cmake_config_fixup(PACKAGE_NAME CommonLibSSE CONFIG_PATH lib/cmake/CommonLibSSE)\nelseif(COMMAND vcpkg_fixup_cmake_targets)\n    vcpkg_fixup_cmake_targets(CONFIG_PATH lib/cmake/CommonLibSSE TARGET_PATH share/CommonLibSSE)\nendif()\n`
+                );
+              } else {
+                portContent = portContent.replace(
+                  /vcpkg_cmake_config_fixup\s*\([^)]*\)/gi,
+                  `if(COMMAND vcpkg_cmake_config_fixup)\n    vcpkg_cmake_config_fixup(PACKAGE_NAME CommonLibSSE CONFIG_PATH lib/cmake/CommonLibSSE)\nelseif(COMMAND vcpkg_fixup_cmake_targets)\n    vcpkg_fixup_cmake_targets(CONFIG_PATH lib/cmake/CommonLibSSE TARGET_PATH share/CommonLibSSE)\nendif()`
+                );
+              }
+            }
+
+            // Ensure dependencies in local port's vcpkg.json declare vcpkg-cmake and vcpkg-cmake-config and bump version to 3.8.1
+            const portVcpkgJson = path.join(path.dirname(filePath), 'vcpkg.json');
+            if (fs.existsSync(portVcpkgJson)) {
+              try {
+                const pJson = JSON.parse(fs.readFileSync(portVcpkgJson, 'utf8'));
+                let pChanged = false;
+
+                // Enforce single versioning field
+                if (
+                  pJson.version !== '3.8.2' ||
+                  pJson['version-semver'] ||
+                  pJson['version-date'] ||
+                  pJson['version-string']
+                ) {
+                  delete pJson['version-semver'];
+                  delete pJson['version-date'];
+                  delete pJson['version-string'];
+                  pJson.version = '3.8.2';
+                  pChanged = true;
+                }
+
+                if (Array.isArray(pJson.dependencies)) {
+                  const requiredDeps = ['vcpkg-cmake', 'vcpkg-cmake-config', 'xbyak', 'spdlog', 'rapidcsv', 'fmt', 'directxtk', 'directxmath'];
+                  for (const dep of requiredDeps) {
+                    const hasDep = pJson.dependencies.some(
+                      (d: any) => (typeof d === 'string' ? d : d.name) === dep
+                    );
+                    if (!hasDep) {
+                      pJson.dependencies.push(dep);
+                      pChanged = true;
+                    }
+                  }
+                }
+
+                if (pChanged) {
+                  fs.writeFileSync(portVcpkgJson, JSON.stringify(pJson, null, 2), 'utf8');
+                  modifiedFiles.add(portVcpkgJson);
+                }
+              } catch {
+                // ignore
+              }
+            }
+
+            changed = true;
+            appliedPatches.push({
+              id: 'vcpkg-port-commonlib-ng',
+              category: 'commonlib_ng',
+              description: `Atualizado portfile para ${this.COMMONLIB_NG_REPO} (${this.COMMONLIB_NG_COMMIT.slice(0, 7)}) com suporte nativo a Address Library Format 5`,
+              filePath,
+            });
+            onLog(
+              `[Patch] Atualizado portfile.cmake em ${path.relative(projectDir, filePath)} para CommonLibSSE-NG moderna (compatível com Address Library Format 5)`,
+              'info'
+            );
+          }
         }
 
         if (changed) {
@@ -1054,6 +1316,9 @@ vcpkg_install_copyright(FILE_LIST "\${SOURCE_PATH}/LICENSE")
           'xbyak',
           'spdlog',
           'rapidcsv',
+          'fmt',
+          'directxtk',
+          'directxmath',
         ],
       },
       null,
@@ -1151,6 +1416,461 @@ vcpkg_install_copyright(FILE_LIST "\${SOURCE_PATH}/LICENSE")
           filePath: pchPath,
         });
         onLog(`[Patch] Injetado NOMINMAX guard no cabeçalho ${path.relative(projectDir, pchPath)}`, 'info');
+      }
+    }
+  }
+
+  /**
+   * Upgrades local commonlibsse-ng overlay port to alandtse/CommonLibVR (v4.0.0+) with Format 5 support.
+   * Used as an advanced recovery technique when the baseline port lacks modern symbols or headers.
+   */
+  public upgradeToModernCommonLibVR(
+    projectDir: string,
+    onLog: (line: string, type: 'stdout' | 'stderr' | 'info') => void
+  ): boolean {
+    const portDir = path.join(projectDir, 'ports', 'commonlibsse-ng');
+    const portfilePath = path.join(portDir, 'portfile.cmake');
+    const portVcpkgJsonPath = path.join(portDir, 'vcpkg.json');
+
+    if (!fs.existsSync(portDir)) {
+      fs.mkdirSync(portDir, { recursive: true });
+    }
+
+    const portfileContent = `vcpkg_check_linkage(ONLY_STATIC_LIBRARY)
+
+vcpkg_from_github(
+    OUT_SOURCE_PATH SOURCE_PATH
+    REPO ${this.COMMONLIB_VR_REPO}
+    REF ${this.COMMONLIB_VR_COMMIT}
+    SHA512 ${this.COMMONLIB_VR_SHA512}
+    HEAD_REF ${this.COMMONLIB_VR_BRANCH}
+)
+
+vcpkg_from_github(
+    OUT_SOURCE_PATH SOURCE_PATH_OPENVR
+    REPO ${this.OPENVR_REPO}
+    REF ${this.OPENVR_COMMIT}
+    SHA512 ${this.OPENVR_SHA512}
+    HEAD_REF master
+)
+file(COPY "\${SOURCE_PATH_OPENVR}/" DESTINATION "\${SOURCE_PATH}/extern/openvr")
+file(REMOVE_RECURSE "\${SOURCE_PATH_OPENVR}/")
+
+${this.FORMAT_5_INJECTION}
+
+vcpkg_cmake_configure(
+    SOURCE_PATH "\${SOURCE_PATH}"
+    OPTIONS
+        -DENABLE_SKYRIM_SE=ON
+        -DENABLE_SKYRIM_AE=ON
+        -DENABLE_SKYRIM_VR=OFF
+        -DBUILD_TESTS=OFF
+        -DSKSE_SUPPORT_XBYAK=ON
+)
+
+vcpkg_cmake_install()
+
+if(COMMAND vcpkg_cmake_config_fixup)
+    vcpkg_cmake_config_fixup(PACKAGE_NAME CommonLibSSE CONFIG_PATH lib/cmake)
+elseif(COMMAND vcpkg_fixup_cmake_targets)
+    vcpkg_fixup_cmake_targets(CONFIG_PATH lib/cmake)
+endif()
+
+file(INSTALL "\${SOURCE_PATH}/extern/openvr/headers/openvr.h" DESTINATION \${CURRENT_PACKAGES_DIR}/include)
+file(GLOB CMAKE_CONFIGS "\${CURRENT_PACKAGES_DIR}/share/CommonLibSSE/CommonLibSSE/*.cmake")
+if(CMAKE_CONFIGS)
+    file(INSTALL \${CMAKE_CONFIGS} DESTINATION "\${CURRENT_PACKAGES_DIR}/share/CommonLibSSE")
+endif()
+if(EXISTS "\${SOURCE_PATH}/cmake/CommonLibSSE.cmake")
+    file(INSTALL "\${SOURCE_PATH}/cmake/CommonLibSSE.cmake" DESTINATION "\${CURRENT_PACKAGES_DIR}/share/CommonLibSSE")
+endif()
+
+file(REMOVE_RECURSE "\${CURRENT_PACKAGES_DIR}/debug/include")
+file(REMOVE_RECURSE "\${CURRENT_PACKAGES_DIR}/share/CommonLibSSE/CommonLibSSE")
+
+vcpkg_install_copyright(FILE_LIST "\${SOURCE_PATH}/LICENSE")
+`;
+
+    const vcpkgJsonContent = JSON.stringify(
+      {
+        name: 'commonlibsse-ng',
+        version: '4.0.0',
+        'port-version': 1,
+        description: 'CommonLibSSE-NG 4.0.0+ with native Address Library Format 5 support',
+        dependencies: [
+          {
+            name: 'vcpkg-cmake-config',
+            host: true,
+          },
+          'vcpkg-cmake',
+          'directxmath',
+          'directxtk',
+          'fmt',
+          'rapidcsv',
+          'spdlog',
+          'xbyak',
+        ],
+      },
+      null,
+      2
+    );
+
+    fs.writeFileSync(portfilePath, portfileContent, 'utf8');
+    fs.writeFileSync(portVcpkgJsonPath, vcpkgJsonContent, 'utf8');
+    onLog(`[Auto-Healing] Overlay port atualizado para CommonLibSSE-NG 4.0.0+ (${this.COMMONLIB_VR_REPO}) com suporte ao Formato 5`, 'info');
+    return true;
+  }
+
+  /**
+   * Injects a missing vcpkg dependency into root vcpkg.json dynamically upon CMake configure failure
+   */
+  public injectMissingVcpkgDependency(
+    projectDir: string,
+    pkgName: string,
+    onLog: (line: string, type: 'stdout' | 'stderr' | 'info') => void
+  ): boolean {
+    const vcpkgJsonPath = path.join(projectDir, 'vcpkg.json');
+    if (!fs.existsSync(vcpkgJsonPath)) return false;
+
+    try {
+      const content = fs.readFileSync(vcpkgJsonPath, 'utf8');
+      const json = JSON.parse(content);
+      if (!Array.isArray(json.dependencies)) {
+        json.dependencies = [];
+      }
+
+      const normalized = pkgName.toLowerCase().replace(/_/g, '-');
+      const candidates = [normalized];
+      if (normalized === 'directxtk') {
+        candidates.push('directxmath');
+      }
+
+      let added = false;
+      for (const cand of candidates) {
+        const has = json.dependencies.some(
+          (d: any) => (typeof d === 'string' ? d.toLowerCase() : d.name?.toLowerCase()) === cand
+        );
+        if (!has) {
+          json.dependencies.push(cand);
+          added = true;
+          onLog(`[Auto-Healing] Injetada dependência ausente no vcpkg.json: ${cand}`, 'info');
+        }
+      }
+
+      if (added) {
+        fs.writeFileSync(vcpkgJsonPath, JSON.stringify(json, null, 2), 'utf8');
+        return true;
+      }
+    } catch {
+      // ignore
+    }
+    return false;
+  }
+
+  /**
+   * Fixes unexpected SHA512 hash mismatch from GitHub tarball downloads automatically
+   */
+  public fixVcpkgHashMismatch(
+    projectDir: string,
+    errorLog: string,
+    onLog: (line: string, type: 'stdout' | 'stderr' | 'info') => void
+  ): boolean {
+    const actualMatch = errorLog.match(/note:\s*Actual\s*:\s*([a-f0-9]{64,128})/i);
+    const expectedMatch = errorLog.match(/note:\s*Expected\s*:\s*([a-f0-9]{64,128})/i);
+    if (!actualMatch || !actualMatch[1]) return false;
+
+    const actualHash = actualMatch[1];
+    const expectedHash = expectedMatch && expectedMatch[1] ? expectedMatch[1] : null;
+    const portFiles = this.findFilesRecursively(projectDir, (f) => f.endsWith('portfile.cmake'));
+    let patched = false;
+
+    for (const pFile of portFiles) {
+      try {
+        let content = fs.readFileSync(pFile, 'utf8');
+        if (expectedHash && content.includes(expectedHash)) {
+          content = content.replace(expectedHash, actualHash);
+          fs.writeFileSync(pFile, content, 'utf8');
+          patched = true;
+          onLog(`[Auto-Healing] Corrigido hash SHA512 desatualizado no portfile: ${path.relative(projectDir, pFile)}`, 'info');
+        }
+      } catch {
+        // ignore
+      }
+    }
+    return patched;
+  }
+
+  /**
+   * Scans CMakeLists.txt files in repository for find_package calls and ensures declared in vcpkg.json
+   */
+  private syncCmakeDependenciesWithVcpkg(
+    projectDir: string,
+    sourceDir: string,
+    appliedPatches: AppliedPatch[],
+    modifiedFilesSet: Set<string>,
+    onLog: (line: string, type: 'stdout' | 'stderr' | 'info') => void
+  ): void {
+    const vcpkgJsonPath = path.join(projectDir, 'vcpkg.json');
+    if (!fs.existsSync(vcpkgJsonPath)) return;
+
+    try {
+      const vcpkgContent = fs.readFileSync(vcpkgJsonPath, 'utf8');
+      const vcpkgData = JSON.parse(vcpkgContent);
+      if (!Array.isArray(vcpkgData.dependencies)) {
+        vcpkgData.dependencies = [];
+      }
+
+      // Procura find_package em todos os CMakeLists.txt
+      const cmakeFiles = this.findFilesRecursively(projectDir, (f) => path.basename(f) === 'CMakeLists.txt');
+      const foundPackages = new Set<string>();
+
+      for (const cFile of cmakeFiles) {
+        try {
+          const cContent = fs.readFileSync(cFile, 'utf8');
+          const regex = /find_package\s*\(\s*([A-Za-z0-9_-]+)/gi;
+          let match: RegExpExecArray | null;
+          while ((match = regex.exec(cContent)) !== null) {
+            foundPackages.add(match[1].toLowerCase());
+          }
+        } catch {
+          // ignore
+        }
+      }
+
+      // Mapeamento de pacotes conhecidos que requerem dependências vcpkg
+      const packageMap: Record<string, string[]> = {
+        directxtk: ['directxtk', 'directxmath'],
+        directxmath: ['directxmath'],
+        spdlog: ['spdlog'],
+        fmt: ['fmt'],
+        rapidcsv: ['rapidcsv'],
+        xbyak: ['xbyak'],
+        nlohmann_json: ['nlohmann-json'],
+        jsoncpp: ['jsoncpp'],
+      };
+
+      let changed = false;
+      for (const [pkg, deps] of Object.entries(packageMap)) {
+        if (foundPackages.has(pkg)) {
+          for (const dep of deps) {
+            const exists = vcpkgData.dependencies.some(
+              (d: any) => (typeof d === 'string' ? d.toLowerCase() : d.name?.toLowerCase()) === dep
+            );
+            if (!exists) {
+              vcpkgData.dependencies.push(dep);
+              changed = true;
+              appliedPatches.push({
+                id: `vcpkg-dep-${dep}`,
+                category: 'legacy_libs',
+                description: `Adicionada dependência ${dep} ao vcpkg.json requerida por find_package(${pkg})`,
+                filePath: vcpkgJsonPath,
+              });
+              onLog(`[Patch] Injetada dependência ${dep} no vcpkg.json (requerida por find_package(${pkg}))`, 'info');
+            }
+          }
+        }
+      }
+
+      if (changed) {
+        fs.writeFileSync(vcpkgJsonPath, JSON.stringify(vcpkgData, null, 2), 'utf8');
+        modifiedFilesSet.add(vcpkgJsonPath);
+      }
+    } catch {
+      // ignore
+    }
+  }
+
+  /**
+   * Scans and patches C++ source files (.cpp, .cxx, .cc, .h, .hpp) for known runtime vulnerabilities:
+   * 1. Quest objective targets null / sentinel pointer dereference (0xFFFFFFFF) in Skyrim SE/AE/1.7+
+   * 2. PlayerCharacter objectives dynamic runtime offset alignment across 1.5.97, 1.6.629+, 1.7.104+
+   * 3. ExtraMapMarker / MapMarkerData null checks during cell transitions
+   */
+  public patchSourceFiles(
+    projectDir: string,
+    appliedPatches: AppliedPatch[],
+    modifiedFilesSet: Set<string>,
+    onLog: (line: string, type: 'stdout' | 'stderr' | 'info') => void
+  ): void {
+    const sourceFiles = this.findFilesRecursively(projectDir, (file) =>
+      /\.(cpp|cxx|cc|h|hpp)$/i.test(file)
+    );
+
+    for (const filePath of sourceFiles) {
+      try {
+        let content = fs.readFileSync(filePath, 'utf8');
+        let fileChanged = false;
+
+        // 1. Guard against questObjective->targets sentinel pointer (0xFFFFFFFF) and null dereference
+        if (
+          content.includes('numTargets') &&
+          content.includes('targets') &&
+          !content.includes('[SKSE Forge] Quest objective pointer guard')
+        ) {
+          // A: Reverse iteration loop pattern (e.g. Alexsylex CompassNavigationOverhaul)
+          const alexsylexTargetPattern =
+            /for\s*\(\s*int\s+([A-Za-z0-9_]+)\s*=\s*([A-Za-z0-9_]+)\.size\(\)\s*-\s*1;\s*\1\s*>=\s*0;\s*\1--\s*\)\s*\{\s*RE::BGSInstancedQuestObjective\*\s+([A-Za-z0-9_]+)\s*=\s*&\2\[\1\];\s*RE::BGSQuestObjective\*\s+([A-Za-z0-9_]+)\s*=\s*\3->objective;\s*for\s*\(\s*int\s+([A-Za-z0-9_]+)\s*=\s*0;\s*\5\s*<\s*\4->numTargets;\s*\5\+\+\s*\)\s*\{/gis;
+
+          if (alexsylexTargetPattern.test(content)) {
+            content = content.replace(
+              alexsylexTargetPattern,
+              `// [SKSE Forge] Quest objective pointer guard\n` +
+              `\t\t\tfor (int $1 = $2.size() - 1; $1 >= 0; $1--)\n` +
+              `\t\t\t{\n` +
+              `\t\t\t\tRE::BGSInstancedQuestObjective* $3 = &$2[$1];\n` +
+              `\t\t\t\tif (!$3) continue;\n` +
+              `\t\t\t\tRE::BGSQuestObjective* $4 = $3->objective;\n` +
+              `\t\t\t\tif (!$4) continue;\n` +
+              `\t\t\t\tconst auto _targetAddr = reinterpret_cast<std::uintptr_t>($4->targets);\n` +
+              `\t\t\t\tif (_targetAddr <= 0xFFFF || _targetAddr == 0xFFFFFFFF || _targetAddr == static_cast<std::uintptr_t>(-1) || _targetAddr > 0x7FFFFFFFFFFF || $4->numTargets <= 0) continue;\n\n` +
+              `\t\t\t\tfor (int $5 = 0; $5 < $4->numTargets; $5++)\n` +
+              `\t\t\t\t{`
+            );
+            fileChanged = true;
+          }
+
+          // B: Forward iteration loop pattern (e.g. WaterFace / generic SKSE mods)
+          const genericTargetPattern =
+            /for\s*\(\s*(?:int|std::size_t)\s+([A-Za-z0-9_]+)\s*=\s*0;\s*\1\s*<\s*([A-Za-z0-9_]+)\.size\(\);\s*\1\+\+\s*\)\s*\{\s*(?:RE::)?BGSQuestObjective\*\s+([A-Za-z0-9_]+)\s*=\s*([A-Za-z0-9_]+)(?:\[\1\]|\.at\(\1\))(?:\.|\->)objective;\s*for\s*\(\s*(?:int|std::size_t)\s+([A-Za-z0-9_]+)\s*=\s*0;\s*\5\s*<\s*\3->numTargets;\s*\5\+\+\s*\)\s*\{/gis;
+
+          if (genericTargetPattern.test(content)) {
+            content = content.replace(
+              genericTargetPattern,
+              `// [SKSE Forge] Quest objective pointer guard\n` +
+              `\t\t\tfor (int $1 = 0; $1 < $2.size(); $1++)\n` +
+              `\t\t\t{\n` +
+              `\t\t\t\tRE::BGSQuestObjective* $3 = $4[$1].objective;\n` +
+              `\t\t\t\tif (!$3) continue;\n` +
+              `\t\t\t\tconst auto _targetAddr = reinterpret_cast<std::uintptr_t>($3->targets);\n` +
+              `\t\t\t\tif (_targetAddr <= 0xFFFF || _targetAddr == 0xFFFFFFFF || _targetAddr == static_cast<std::uintptr_t>(-1) || _targetAddr > 0x7FFFFFFFFFFF || $3->numTargets <= 0) continue;\n\n` +
+              `\t\t\t\tfor (int $5 = 0; $5 < $3->numTargets; $5++)\n` +
+              `\t\t\t\t{`
+            );
+            fileChanged = true;
+          }
+
+          // C: In direct comparison inside target loop
+          content = content.replace(
+            /if\s*\(\s*([A-Za-z0-9_]+)\s*==\s*([A-Za-z0-9_]+)->targets\[([A-Za-z0-9_]+)\]\s*\)/g,
+            'if ($1 && $1 == $2->targets[$3])'
+          );
+
+          if (fileChanged) {
+            appliedPatches.push({
+              id: 'quest-objective-sentinel-guard',
+              category: 'source_hardening',
+              description: 'Injetada blindagem defensiva contra ponteiro sentinela (0xFFFFFFFF) e nulo em questObjective->targets',
+              filePath,
+            });
+            onLog(
+              `[Patch] Injetada blindagem contra ponteiro sentinela (0xFFFFFFFF) em questObjective->targets em: ${path.relative(projectDir, filePath)}`,
+              'info'
+            );
+          }
+        }
+
+        // 2. Harden PlayerCharacter runtime data objectives dynamic offset across Skyrim SE / AE / 1.7+
+        if (
+          content.includes('GetPlayerRuntimeData().objectives') &&
+          !content.includes('[SKSE Forge] Dynamic PlayerCharacter objectives offset')
+        ) {
+          const playerObjectivesRegex =
+            /(?:RE::)?BSTArray<(?:RE::)?BGSInstancedQuestObjective>\s*&\s*([A-Za-z0-9_]+)\s*=\s*(?:REL::)?Module::IsVR\(\)\s*\?\s*([A-Za-z0-9_]+)->GetVRPlayerRuntimeData\(\)\.objectives\s*:\s*\2->GetPlayerRuntimeData\(\)\.objectives;/gis;
+
+          if (playerObjectivesRegex.test(content)) {
+            content = content.replace(
+              playerObjectivesRegex,
+              `// [SKSE Forge] Dynamic PlayerCharacter objectives offset (1.5.97: 0x580, 1.6.629+/1.7+: 0x588)\n` +
+              `\t\t\tauto _playerAddr = reinterpret_cast<std::uintptr_t>($2);\n` +
+              `\t\t\tRE::BSTArray<RE::BGSInstancedQuestObjective>& $1 = REL::Module::IsVR() ?\n` +
+              `\t\t\t\t$2->GetVRPlayerRuntimeData().objectives :\n` +
+              `\t\t\t\t*reinterpret_cast<RE::BSTArray<RE::BGSInstancedQuestObjective>*>(\n` +
+              `\t\t\t\t\t_playerAddr + (REL::Module::get().version().compare(SKSE::RUNTIME_SSE_1_6_629) == std::strong_ordering::less ? 0x580 : 0x588));`
+            );
+            fileChanged = true;
+
+            appliedPatches.push({
+              id: 'player-objectives-dynamic-offset',
+              category: 'source_hardening',
+              description: 'Corrigido offset dinâmico de PlayerCharacter::objectives para Skyrim 1.5.97 (0x580) e 1.6.629+/1.7+ (0x588)',
+              filePath,
+            });
+            onLog(
+              `[Patch] Offset dinâmico de PlayerCharacter::objectives injetado com sucesso em: ${path.relative(projectDir, filePath)}`,
+              'info'
+            );
+          }
+        }
+
+        // 3. Player singleton null guard in quest objective and marker update functions
+        if (
+          content.includes('PlayerCharacter::GetSingleton()') &&
+          !content.includes('[SKSE Forge] Player null check')
+        ) {
+          // A: In UpdateQuests (returns bool) where player is used to fetch objectives
+          const playerHookAssign = /(auto\s+([A-Za-z0-9_]+)\s*=\s*(?:RE::)?PlayerCharacter::GetSingleton\(\);)(\s*(?:\/\/.*?\n\s*)*(?:auto\s+_playerAddr|(?:RE::)?BSTArray<(?:RE::)?BGSInstancedQuestObjective>))/gi;
+          if (playerHookAssign.test(content)) {
+            content = content.replace(
+              playerHookAssign,
+              `$1\n\t\t\t// [SKSE Forge] Player null check\n\t\t\tif (!$2) return true;\n$3`
+            );
+            fileChanged = true;
+            appliedPatches.push({
+              id: 'player-singleton-null-guard',
+              category: 'source_hardening',
+              description: 'Injetada verificação defensiva de ponteiro nulo para PlayerCharacter::GetSingleton()',
+              filePath,
+            });
+            onLog(
+              `[Patch] Injetada verificação defensiva de ponteiro nulo para PlayerCharacter::GetSingleton() em: ${path.relative(projectDir, filePath)}`,
+              'info'
+            );
+          }
+
+          // B: In AllowedToShowMapMarker (returns RE::TESWorldSpace*)
+          if (content.includes('player->GetWorldspace()')) {
+            content = content.replace(
+              /RE::TESWorldSpace\*\s+([A-Za-z0-9_]+)\s*=\s*([A-Za-z0-9_]+)->GetWorldspace\(\);/g,
+              'RE::TESWorldSpace* $1 = $2 ? $2->GetWorldspace() : nullptr;'
+            );
+            fileChanged = true;
+          }
+        }
+
+        // 4. MapMarker null guard in UpdateLocations
+        if (
+          content.includes('marker->extraList.GetByType<RE::ExtraMapMarker>()') &&
+          !content.includes('[SKSE Forge] MapMarker null check')
+        ) {
+          content = content.replace(
+            /auto\s+([A-Za-z0-9_]+)\s*=\s*([A-Za-z0-9_]+)->extraList\.GetByType<RE::ExtraMapMarker>\(\);/g,
+            `// [SKSE Forge] MapMarker null check\n\t\t\tauto $1 = $2 ? $2->extraList.GetByType<RE::ExtraMapMarker>() : nullptr;`
+          );
+          content = content.replace(
+            /if\s*\(\s*(settings::display::showUndiscoveredLocationMarkers\s*\|\|\s*([A-Za-z0-9_]+)->mapData->flags\.all\(RE::MapMarkerData::Flag::kVisible\))\s*\)/g,
+            'if ($2 && $2->mapData && ($1))'
+          );
+          if (content.includes('[SKSE Forge] MapMarker null check')) {
+            fileChanged = true;
+            appliedPatches.push({
+              id: 'mapmarker-null-guard',
+              category: 'source_hardening',
+              description: 'Injetada verificação defensiva de ponteiro nulo para ExtraMapMarker e mapData',
+              filePath,
+            });
+            onLog(
+              `[Patch] Injetada verificação defensiva de ponteiro nulo para ExtraMapMarker em: ${path.relative(projectDir, filePath)}`,
+              'info'
+            );
+          }
+        }
+
+        if (fileChanged) {
+          fs.writeFileSync(filePath, content, 'utf8');
+          modifiedFilesSet.add(filePath);
+        }
+      } catch (err) {
+        // ignore read/write errors for single files
       }
     }
   }
